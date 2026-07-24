@@ -51,6 +51,7 @@ import {
 import {sendUpcomingReminders} from "../notifications/reminders";
 
 const projectId = "demo-nextlist";
+const testRunId = Date.now().toString(36);
 const clients: TestClient[] = [];
 let adminApp: App;
 
@@ -86,7 +87,7 @@ async function createClient(index: number, verified = true): Promise<TestClient>
   connectFunctionsEmulator(functions, "127.0.0.1", 5001);
   const firestore = getClientFirestore(app);
   connectFirestoreEmulator(firestore, "127.0.0.1", 8080);
-  const email = `m2-user-${index}@example.com`;
+  const email = `m2-user-${index}-${testRunId}@example.com`;
   const credential = await createUserWithEmailAndPassword(
     auth,
     email,
@@ -341,7 +342,7 @@ test("M2 callable transactions preserve membership and role invariants", async (
     "ADMIN_CANNOT_LEAVE",
   );
 
-  const targetEmail = "m2-user-3@example.com";
+  const targetEmail = `m2-user-3-${testRunId}@example.com`;
   assert.deepEqual(
     await call(owner, "sendDirectInvite", {
       groupId: created.groupId,
@@ -718,6 +719,25 @@ test("M4 transitions stay exact while M5 emits only the allowed feed events", as
   const database = getFirestore(adminApp);
   const groupRef = database.collection("groups").doc(created.groupId);
   const ideaRef = groupRef.collection("ideas").doc("m4-idea-1");
+  const expectedPreRemovalFeedTypes = [
+    "idea_created",
+    "schedule_created",
+    "schedule_updated",
+    "schedule_updated",
+  ].sort();
+  const expectedFeedTypes = [
+    "idea_completed",
+    ...expectedPreRemovalFeedTypes,
+  ].sort();
+  const readFeedTypes = async (): Promise<unknown[]> => {
+    const [ownerFeed, memberFeed] = await Promise.all([
+      database.collection("users").doc(owner.uid).collection("feed").get(),
+      database.collection("users").doc(member.uid).collection("feed").get(),
+    ]);
+    return [...ownerFeed.docs, ...memberFeed.docs]
+      .map((document) => document.get("type"))
+      .sort();
+  };
   const ownerSnapshot = {nickname: "成员30", avatarPath: null};
   const memberSnapshot = {nickname: "成员31", avatarPath: null};
   const now = Timestamp.now();
@@ -884,6 +904,11 @@ test("M4 transitions stay exact while M5 emits only the allowed feed events", as
   );
   assert.equal((await getDoc(memberRsvp)).get("scheduleRevision"), 2);
   assert.equal((await ideaRef.get()).get("schedule.revision"), 3);
+  await waitFor(async () => {
+    const feedTypes = await readFeedTypes();
+    return JSON.stringify(feedTypes) ===
+      JSON.stringify(expectedPreRemovalFeedTypes);
+  }, 15_000);
 
   await call(owner, "removeMember", {
     groupId: created.groupId,
@@ -937,6 +962,10 @@ test("M4 transitions stay exact while M5 emits only the allowed feed events", as
   assert.equal((await groupRef.get()).get("scheduledCount"), 0);
   assert.equal((await groupRef.get()).get("completedCount"), 1);
 
+  await waitFor(async () => {
+    const feedTypes = await readFeedTypes();
+    return JSON.stringify(feedTypes) === JSON.stringify(expectedFeedTypes);
+  }, 15_000);
   const [ownerFeed, memberFeed] = await Promise.all([
     database.collection("users").doc(owner.uid).collection("feed").get(),
     database.collection("users").doc(member.uid).collection("feed").get(),
@@ -946,13 +975,7 @@ test("M4 transitions stay exact while M5 emits only the allowed feed events", as
     .sort();
   assert.deepEqual(
     allFeedTypes,
-    [
-      "idea_completed",
-      "idea_created",
-      "schedule_created",
-      "schedule_updated",
-      "schedule_updated",
-    ].sort(),
+    expectedFeedTypes,
   );
 });
 
