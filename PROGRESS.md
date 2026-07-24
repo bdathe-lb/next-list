@@ -4,11 +4,13 @@
 
 ## 当前阶段
 
-**M5：动态与通知（本地验收完成，等待远端 CI）**
+**M5：动态与通知（已关闭）**
 
-M0～M4 已关闭。M5 的 Android、Functions、Rules、索引、单元/集成测试，以及两个
-只读 `Pixel_9_Pro` API 37 Emulator 实例上的并行设备测试均已完成。本地未提交、
-推送、合并或部署；未经过远端 CI，因此 M5 尚未正式关闭。
+M0～M5 已关闭。M5 实现提交 `6a8040c` 已推送至
+[Draft PR #2](https://github.com/bdathe-lb/next-list/pull/2)；本地全量验收和远端
+[CI #30102400540](https://github.com/bdathe-lb/next-list/actions/runs/30102400540)
+的 Android、Functions and Firebase Rules 两个 Job 均通过。PR 尚未合并，真实
+Firebase 环境尚未部署。
 
 ## M5 已完成
 
@@ -214,9 +216,9 @@ M0～M4 已关闭。M5 的 Android、Functions、Rules、索引、单元/集成�
 | Firestore Rules | 通过 | 35/35 allow/deny 用例 |
 | Storage Rules | 通过 | 11/11 allow/deny 用例 |
 | Release APK | 通过 | `assembleRelease`；Release 不连接 Emulator |
-| API 37 M5 双设备自动化 | 通过 | 两个只读 Pixel_9_Pro 实例并行执行完整 26 条设备用例 |
+| API 37 M5 双设备自动化 | 通过 | 两个只读 Pixel_9_Pro 实例并行执行完整 28 条设备用例 |
 | M5 真实两账号/FCM 烟测 | 待外部环境 | Emulator 无真实 FCM，且本轮未配置真实 Firebase 项目；不得记为生产通过 |
-| GitHub Actions | 等待 | M5 尚未提交或推送；最近合并后通过仍为 M4 [CI #30095825232](https://github.com/bdathe-lb/next-list/actions/runs/30095825232) |
+| GitHub Actions | 通过 | [CI #30102400540](https://github.com/bdathe-lb/next-list/actions/runs/30102400540)：Android 2m41s；Functions and Firebase Rules 1m29s |
 
 ### API 37 M5 设备验证明细
 
@@ -306,6 +308,9 @@ M4 远端 CI：[CI #30094931847](https://github.com/bdathe-lb/next-list/actions/
 提交 `e5b3a35` 的 Android 与 Functions and Firebase Rules 两个 Job 均通过。
 合并到 `main` 后的 [CI #30095825232](https://github.com/bdathe-lb/next-list/actions/runs/30095825232)
 也已通过。
+M5 远端 CI：[CI #30102400540](https://github.com/bdathe-lb/next-list/actions/runs/30102400540)，
+实现提交 `6a8040c` 的 Android 与 Functions and Firebase Rules 两个 Job 均通过；
+M5 随后正式关闭。
 
 ## 当前限制与外部配置
 
@@ -315,7 +320,7 @@ M4 远端 CI：[CI #30094931847](https://github.com/bdathe-lb/next-list/actions/
   仍是外部配置事项。
 - 邮件发件模板/域名、动态链接落地页、生产监控、隐私政策和账号注销按后续发布
   加固计划处理。
-- M3/M4 的 Firestore/Storage Rules、复合索引和 Functions 尚未部署到真实项目；
+- M3～M5 的 Firestore/Storage Rules、复合索引和 Functions 尚未部署到真实项目；
   生产环境还需部署后执行 App Check、Rules、图片上传和两设备预发布 smoke test。
 - Firebase Emulator 不提供真实 FCM 投递；Functions 集成测试使用可替换发送器验证
   payload、偏好、幂等、部分失败和 token 清理。未运行 Pub/Sub Emulator 时 Scheduled
@@ -325,6 +330,7 @@ M4 远端 CI：[CI #30094931847](https://github.com/bdathe-lb/next-list/actions/
 
 ## 下一步
 
-1. 等待 M5 本地改动提交、推送并通过远端 CI 后，再正式关闭 M5。
+1. 审阅 [Draft PR #2](https://github.com/bdathe-lb/next-list/pull/2)，按发布安排决定
+   何时转为 Ready 并合并；本轮不合并或部署。
 2. 如具备真实 Firebase 项目，部署 M3～M5 Rules、索引和 Functions，配置 Play
    Integrity，并执行生产预发布 App Check / Rules / Storage 双设备 smoke test。
