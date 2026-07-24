@@ -9,8 +9,8 @@
 M0～M5 已关闭。M5 实现提交 `6a8040c` 已推送至
 [Draft PR #2](https://github.com/bdathe-lb/next-list/pull/2)；本地全量验收和远端
 [CI #30102400540](https://github.com/bdathe-lb/next-list/actions/runs/30102400540)
-的 Android、Functions and Firebase Rules 两个 Job 均通过。PR 尚未合并，真实
-Firebase 环境尚未部署。
+的 Android、Functions and Firebase Rules 两个 Job 均通过。真实 Firebase 环境
+尚未部署。
 
 ## M5 已完成
 
@@ -330,7 +330,5 @@ M5 随后正式关闭。
 
 ## 下一步
 
-1. 审阅 [Draft PR #2](https://github.com/bdathe-lb/next-list/pull/2)，按发布安排决定
-   何时转为 Ready 并合并；本轮不合并或部署。
-2. 如具备真实 Firebase 项目，部署 M3～M5 Rules、索引和 Functions，配置 Play
+1. 如具备真实 Firebase 项目，部署 M3～M5 Rules、索引和 Functions，配置 Play
    Integrity，并执行生产预发布 App Check / Rules / Storage 双设备 smoke test。

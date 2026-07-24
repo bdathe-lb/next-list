@@ -5,9 +5,10 @@
 ## 当前状态
 
 M0“项目骨架”、M1“账号与资料”、M2“小组与邀请”、M3“想法、表态与评论”和
-M4“安排、随机与完成”已经完成。M5“动态与通知”已完成本地实现与验收，等待
-远端 CI；真实 Firebase 环境部署与预发布验证仍作为外部配置事项跟踪。开发进度见
-[PROGRESS.md](./PROGRESS.md)，产品和技术设计见 [docs/README.md](./docs/README.md)。
+M4“安排、随机与完成”已经完成。M5“动态与通知”已正式关闭，本地全量验收与
+GitHub Actions 均已通过；真实 Firebase 环境部署与预发布验证仍作为外部配置事项
+跟踪。开发进度见 [PROGRESS.md](./PROGRESS.md)，产品和技术设计见
+[docs/README.md](./docs/README.md)。
 
 ## 工程组成
 
