@@ -110,8 +110,11 @@ dependencies {
     ksp(libs.hilt.compiler)
 
     implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
+    implementation(libs.androidx.exifinterface)
 
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.test.espresso.core)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(platform(libs.compose.bom))

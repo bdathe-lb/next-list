@@ -30,9 +30,42 @@ service cloud.firestore {
       return value is string && value.size() >= 2 && value.size() <= 20;
     }
 
-    function validUserCreate(uid) {
-      return isOwner(uid)
-        && request.resource.data.keys().hasOnly([
+    function validAvatarPath(uid, value) {
+      return value == null
+        || (
+          value is string
+          && value.matches(
+            '^users/' + uid + '/avatar/[A-Za-z0-9_-]+[.]webp$'
+          )
+        );
+    }
+
+    function validNotificationPrefs(value) {
+      return value is map
+        && value.keys().hasAll([
+          "groupInvite",
+          "newSchedule",
+          "upcomingReminder",
+          "ideaComment"
+        ])
+        && value.keys().hasOnly([
+          "groupInvite",
+          "newSchedule",
+          "upcomingReminder",
+          "ideaComment"
+        ])
+        && value.groupInvite is bool
+        && value.newSchedule is bool
+        && value.upcomingReminder is bool
+        && value.ideaComment is bool;
+    }
+
+    function tokenEmailVerified() {
+      return request.auth.token.email_verified == true;
+    }
+
+    function validUserShape(uid, value) {
+      return value.keys().hasAll([
           "nickname",
           "avatarPath",
           "emailVerified",
@@ -42,27 +75,52 @@ service cloud.firestore {
           "updatedAt",
           "schemaVersion"
         ])
-        && validNickname(request.resource.data.nickname)
-        && (
-          request.resource.data.avatarPath == null
-          || request.resource.data.avatarPath is string
-        )
-        && request.resource.data.emailVerified is bool
-        && request.resource.data.status == "active"
-        && request.resource.data.schemaVersion == 1;
+        && value.keys().hasOnly([
+          "nickname",
+          "avatarPath",
+          "emailVerified",
+          "notificationPrefs",
+          "status",
+          "createdAt",
+          "updatedAt",
+          "schemaVersion"
+        ])
+        && validNickname(value.nickname)
+        && validAvatarPath(uid, value.avatarPath)
+        && value.emailVerified is bool
+        && validNotificationPrefs(value.notificationPrefs)
+        && value.status == "active"
+        && value.createdAt is timestamp
+        && value.updatedAt is timestamp
+        && value.schemaVersion == 1;
+    }
+
+    function validUserCreate(uid) {
+      return isOwner(uid)
+        && validUserShape(uid, request.resource.data)
+        && request.resource.data.emailVerified == tokenEmailVerified()
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
     }
 
     match /users/{uid} {
       allow read: if isOwner(uid);
       allow create: if validUserCreate(uid);
       allow update: if isOwner(uid)
+        && validUserShape(uid, request.resource.data)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           "nickname",
           "avatarPath",
           "notificationPrefs",
+          "emailVerified",
           "updatedAt"
         ])
-        && validNickname(request.resource.data.nickname);
+        && request.resource.data.updatedAt == request.time
+        && (
+          !request.resource.data.diff(resource.data)
+            .affectedKeys().hasAny(["emailVerified"])
+          || request.resource.data.emailVerified == tokenEmailVerified()
+        );
       allow delete: if false;
 
       match /devices/{deviceId} {

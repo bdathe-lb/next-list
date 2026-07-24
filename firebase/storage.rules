@@ -12,6 +12,13 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
     }
 
+    function validAvatar(fileName) {
+      return request.resource != null
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType == "image/webp"
+        && fileName.matches('^[A-Za-z0-9_-]+[.]webp$');
+    }
+
     function isActiveMember(groupId) {
       return signedIn()
         && firestore.exists(
@@ -32,7 +39,7 @@ service firebase.storage {
       allow read: if signedIn();
       allow create, update: if signedIn()
         && request.auth.uid == uid
-        && validImage();
+        && validAvatar(fileName);
       allow delete: if signedIn() && request.auth.uid == uid;
     }
 

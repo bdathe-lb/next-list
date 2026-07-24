@@ -4,7 +4,8 @@
 
 ## 当前状态
 
-项目正在进行 M0“项目骨架”。开发进度见 [PROGRESS.md](./PROGRESS.md)，产品和技术设计见 [docs/README.md](./docs/README.md)。
+M0“项目骨架”和 M1“账号与资料”已经完成。开发进度见
+[PROGRESS.md](./PROGRESS.md)，产品和技术设计见 [docs/README.md](./docs/README.md)。
 
 ## 工程组成
 
@@ -33,7 +34,9 @@ docs/         产品与开发文档
 cp app/google-services.json.example app/google-services.json
 ```
 
-随后把文件内容替换为 Firebase Console 下载的真实配置。真实 `google-services.json` 不提交版本库。
+示例文件指向 `demo-nextlist`，可直接用于本地 Emulator 开发。接入真实环境时，
+再把内容替换为 Firebase Console 下载的对应配置。真实 `google-services.json`
+不提交版本库。
 
 构建：
 
@@ -41,7 +44,9 @@ cp app/google-services.json.example app/google-services.json
 ./gradlew testDebugUnitTest lintDebug assembleDebug
 ```
 
-没有 `google-services.json` 时应用仍可构建并展示 M0 骨架，但不会初始化 Firebase。存在真实配置时，Debug 构建默认连接本地 Emulator。
+没有 `google-services.json` 时应用仍可安全构建，账号页会说明 Firebase 尚未配置并
+禁用提交。存在配置时，Debug 构建默认连接本地 Emulator；Release 构建不会连接
+Emulator。
 
 ## Firebase Emulator
 

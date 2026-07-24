@@ -1,45 +1,48 @@
 package com.example.nextlist.feature.groups
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.tooling.preview.Preview
-import com.example.nextlist.core.designsystem.NextListTheme
-import com.example.nextlist.data.firebase.FirebaseRuntimeStatus
-import com.example.nextlist.feature.shell.M0PlaceholderScreen
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 
 @Composable
-fun GroupsScreen(firebaseStatus: FirebaseRuntimeStatus) {
-    val statusText = when (firebaseStatus) {
-        FirebaseRuntimeStatus.EMULATOR -> "Firebase Emulator 已连接"
-        FirebaseRuntimeStatus.PRODUCTION -> "Firebase 生产配置已加载"
-        FirebaseRuntimeStatus.NOT_CONFIGURED -> "骨架模式：尚未加载 Firebase 配置"
-    }
-    val statusColor = when (firebaseStatus) {
-        FirebaseRuntimeStatus.EMULATOR -> Color(0xFF2F6B45)
-        FirebaseRuntimeStatus.PRODUCTION -> MaterialTheme.colorScheme.secondary
-        FirebaseRuntimeStatus.NOT_CONFIGURED -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-
-    M0PlaceholderScreen(
-        eyebrow = "下次 · NextList",
-        title = "我的小组",
-        description = "把大家以后想一起做的事，先放在这里。",
-        supportingContent = {
+fun GroupsScreen(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 24.dp, vertical = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            text = "我的小组",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = 56.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
             Text(
-                text = statusText,
-                color = statusColor,
-                style = MaterialTheme.typography.labelLarge,
+                text = "还没有小组",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
             )
-        },
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-private fun GroupsScreenPreview() {
-    NextListTheme {
-        GroupsScreen(firebaseStatus = FirebaseRuntimeStatus.EMULATOR)
+            Text(
+                text = "创建小组和加入邀请将在下一阶段开放。",
+                modifier = Modifier.padding(top = 8.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyLarge,
+            )
+        }
     }
 }

@@ -1,23 +1,33 @@
 package com.example.nextlist.feature.activityfeed
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.tooling.preview.Preview
-import com.example.nextlist.core.designsystem.NextListTheme
-import com.example.nextlist.feature.shell.M0PlaceholderScreen
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 
 @Composable
-fun ActivityFeedScreen() {
-    M0PlaceholderScreen(
-        eyebrow = "重要变化，不打扰",
-        title = "动态",
-        description = "新想法、活动安排、评论与完成记录会出现在这里。",
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-private fun ActivityFeedScreenPreview() {
-    NextListTheme {
-        ActivityFeedScreen()
+fun ActivityFeedScreen(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 24.dp, vertical = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = "动态",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = "小组的重要变化会在后续阶段集中显示在这里。",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyLarge,
+        )
     }
 }
