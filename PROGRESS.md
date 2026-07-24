@@ -4,12 +4,12 @@
 
 ## 当前阶段
 
-**M2：小组与邀请（本地验收完成，等待远端 CI）**
+**M2：小组与邀请（已完成）**
 
-M0“项目骨架”和 M1“账号与资料”已关闭。M2 的 Android 实现、Functions 事务、
-Security Rules、单元/集成/设备测试以及两台独立 Pixel_9_Pro API 37 Emulator
-烟测均已完成；待 GitHub Actions 的 Android 与 Functions and Firebase Rules
-两个 Job 通过后正式关闭。
+M0“项目骨架”、M1“账号与资料”和 M2“小组与邀请”均已关闭。M2 的 Android
+实现、Functions 事务、Security Rules、单元/集成/设备测试、两台独立
+Pixel_9_Pro API 37 Emulator 烟测以及 GitHub Actions 远端验收均已完成。
+下一阶段为 M3“想法清单”。
 
 ## M2 已完成
 
@@ -70,6 +70,7 @@ Security Rules、单元/集成/设备测试以及两台独立 Pixel_9_Pro API 37
 | Functions Emulator 集成 | 通过 | 12 个账号覆盖事务、并发、幂等、权限和竞态 |
 | Firestore / Storage Rules | 通过 | 25/25 allow/deny 用例 |
 | API 37 M2 双设备烟测 | 通过 | 创建、邀请预览、加入、实时 2 人、移除与失权自动返回 |
+| GitHub Actions | 通过 | Android 与 Functions and Firebase Rules 两个 Job |
 
 ### API 37 烟测明细
 
@@ -97,6 +98,8 @@ Security Rules、单元/集成/设备测试以及两台独立 Pixel_9_Pro API 37
 M0 关闭提交：`daaf13f chore: close M0`。
 M1 远端 CI：[CI #30070567072](https://github.com/bdathe-lb/next-list/actions/runs/30070567072)，
 提交 `cd71306` 的 Android 与 Functions and Firebase Rules 两个 Job 均通过。
+M2 远端 CI：[CI #30078762899](https://github.com/bdathe-lb/next-list/actions/runs/30078762899)，
+提交 `fb8286a` 的 Android 与 Functions and Firebase Rules 两个 Job 均通过。
 
 ## 当前限制与外部配置
 
@@ -110,7 +113,6 @@ M1 远端 CI：[CI #30070567072](https://github.com/bdathe-lb/next-list/actions/
 
 ## 下一步
 
-1. 推送 M2 实现并等待 GitHub Actions 两个 Job 通过，随后正式关闭 M2。
-2. 进入 M3“想法清单”，实现小组内想法 CRUD、分类、投票和权限规则。
-3. 如具备真实 Firebase 项目，配置生产密钥与 Play Integrity，并执行生产预发布
+1. 进入 M3“想法清单”，实现小组内想法 CRUD、分类、投票和权限规则。
+2. 如具备真实 Firebase 项目，配置生产密钥与 Play Integrity，并执行生产预发布
    App Check / Rules smoke test。
