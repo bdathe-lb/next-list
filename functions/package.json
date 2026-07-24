@@ -1,0 +1,32 @@
+{
+  "name": "nextlist-functions",
+  "private": true,
+  "main": "lib/index.js",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
+    "lint": "eslint .",
+    "build": "tsc",
+    "test:unit": "npm run build && node --test lib/shared/*.test.js",
+    "test:rules": "npm run build && node --test --test-concurrency=1 lib/test/firestore.rules.test.js lib/test/storage.rules.test.js",
+    "check": "npm run lint && npm run test:unit"
+  },
+  "dependencies": {
+    "firebase-admin": "14.2.0",
+    "firebase-functions": "7.3.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@firebase/rules-unit-testing": "5.0.1",
+    "@types/node": "22.20.1",
+    "eslint": "10.7.0",
+    "firebase": "12.16.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.65.0"
+  },
+  "overrides": {
+    "uuid": "11.1.1"
+  }
+}

@@ -1,0 +1,38 @@
+# Android / Gradle
+.gradle/
+build/
+**/build/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+
+# Firebase
+app/google-services.json
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Node.js
+node_modules/
+functions/node_modules/
+functions/lib/
+*.tsbuildinfo
+npm-debug.log*
+
+# macOS
+.DS_Store
+
+# Secrets and signing
+*.jks
+*.keystore
+*.p12
+service-account*.json
+.env
+.env.*
+!.env.example

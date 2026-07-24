@@ -1,0 +1,123 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function groupPath(groupId) {
+      return /databases/$(database)/documents/groups/$(groupId);
+    }
+
+    function memberPath(groupId, uid) {
+      return /databases/$(database)/documents/groups/$(groupId)/members/$(uid);
+    }
+
+    function isActiveMember(groupId) {
+      return signedIn()
+        && exists(groupPath(groupId))
+        && get(groupPath(groupId)).data.status == "active"
+        && exists(memberPath(groupId, request.auth.uid))
+        && get(memberPath(groupId, request.auth.uid)).data.status == "active";
+    }
+
+    function validNickname(value) {
+      return value is string && value.size() >= 2 && value.size() <= 20;
+    }
+
+    function validUserCreate(uid) {
+      return isOwner(uid)
+        && request.resource.data.keys().hasOnly([
+          "nickname",
+          "avatarPath",
+          "emailVerified",
+          "notificationPrefs",
+          "status",
+          "createdAt",
+          "updatedAt",
+          "schemaVersion"
+        ])
+        && validNickname(request.resource.data.nickname)
+        && (
+          request.resource.data.avatarPath == null
+          || request.resource.data.avatarPath is string
+        )
+        && request.resource.data.emailVerified is bool
+        && request.resource.data.status == "active"
+        && request.resource.data.schemaVersion == 1;
+    }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow create: if validUserCreate(uid);
+      allow update: if isOwner(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "nickname",
+          "avatarPath",
+          "notificationPrefs",
+          "updatedAt"
+        ])
+        && validNickname(request.resource.data.nickname);
+      allow delete: if false;
+
+      match /devices/{deviceId} {
+        allow read, create, update, delete: if isOwner(uid);
+      }
+
+      match /feed/{feedId} {
+        allow read: if isOwner(uid);
+        allow update: if isOwner(uid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["readAt"]);
+        allow create, delete: if false;
+      }
+
+      match /invitations/{invitationId} {
+        allow read: if isOwner(uid);
+        allow update: if isOwner(uid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "status",
+            "respondedAt"
+          ])
+          && request.resource.data.status in ["declined"];
+        allow create, delete: if false;
+      }
+    }
+
+    match /groups/{groupId} {
+      allow read: if isActiveMember(groupId);
+      allow write: if false;
+
+      match /members/{uid} {
+        allow read: if isOwner(uid) || isActiveMember(groupId);
+        allow write: if false;
+      }
+
+      match /ideas/{ideaId} {
+        allow read: if isActiveMember(groupId);
+        allow write: if false;
+
+        match /{subcollection}/{documentId} {
+          allow read: if isActiveMember(groupId);
+          allow write: if false;
+        }
+      }
+    }
+
+    match /groupInvites/{inviteId} {
+      allow read, write: if false;
+    }
+
+    match /functionEvents/{eventId} {
+      allow read, write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

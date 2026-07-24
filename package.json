@@ -1,0 +1,14 @@
+{
+  "name": "nextlist-workspace",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "emulators": "firebase emulators:start --project demo-nextlist",
+    "test:rules": "firebase emulators:exec --project demo-nextlist --only firestore,storage \"npm --prefix functions run test:rules\""
+  },
+  "devDependencies": {
+    "firebase-tools": "15.24.0"
+  }
+}
