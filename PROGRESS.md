@@ -4,14 +4,15 @@
 
 ## 当前阶段
 
-**M4：安排、随机与完成（本地验收通过，等待远端验收）**
+**M4：安排、随机与完成（已完成）**
 
-M0～M3 均已关闭。M4 的 Android 实现、可信 RSVP 聚合、Security Rules、
+M0～M4 均已关闭。M4 的 Android 实现、可信 RSVP 聚合、Security Rules、
 单元/集成/设备测试，以及两个只读 `Pixel_9_Pro` API 37 Emulator 实例上的并行
-设备验证均已完成。当前改动仍只在本地工作区，尚未提交、推送、部署或触发远端
-CI；因此 M4 暂不标记为正式关闭。
+设备验证均已完成。实现提交 `e5b3a35` 已推送至 GitHub；远端
+[CI #30094931847](https://github.com/bdathe-lb/next-list/actions/runs/30094931847)
+的 Android 与 Functions and Firebase Rules 两个 Job 均通过，M4 正式关闭。
 
-## M4 本地已完成
+## M4 已完成
 
 ### 安排与列表
 
@@ -167,7 +168,7 @@ CI；因此 M4 暂不标记为正式关闭。
 | Storage Rules | 通过 | 11/11 allow/deny 用例 |
 | Release APK | 通过 | `assembleRelease`，未连接 Emulator |
 | API 37 M4 双设备烟测 | 通过 | 两个只读 Pixel_9_Pro 实例并行执行完整 22 条设备用例 |
-| GitHub Actions | 待运行 | M4 尚未提交或推送；最近通过记录仍为 M3 [CI #30086419538](https://github.com/bdathe-lb/next-list/actions/runs/30086419538) |
+| GitHub Actions | 通过 | M4 [CI #30094931847](https://github.com/bdathe-lb/next-list/actions/runs/30094931847)；Android 与 Functions and Firebase Rules 两个 Job 均通过 |
 
 ### API 37 M4 烟测明细
 
@@ -237,6 +238,8 @@ M2 远端 CI：[CI #30078762899](https://github.com/bdathe-lb/next-list/actions/
 提交 `fb8286a` 的 Android 与 Functions and Firebase Rules 两个 Job 均通过。
 M3 远端 CI：[CI #30086419538](https://github.com/bdathe-lb/next-list/actions/runs/30086419538)，
 提交 `83cd9ed` 的 Android 与 Functions and Firebase Rules 两个 Job 均通过。
+M4 远端 CI：[CI #30094931847](https://github.com/bdathe-lb/next-list/actions/runs/30094931847)，
+提交 `e5b3a35` 的 Android 与 Functions and Firebase Rules 两个 Job 均通过。
 
 ## 当前限制与外部配置
 
@@ -248,14 +251,11 @@ M3 远端 CI：[CI #30086419538](https://github.com/bdathe-lb/next-list/actions/
   加固计划处理。
 - M3/M4 的 Firestore/Storage Rules、复合索引和 Functions 尚未部署到真实项目；
   生产环境还需部署后执行 App Check、Rules、图片上传和两设备预发布 smoke test。
-- M4 尚未提交、推送或经过远端 CI，本地验收通过不等同于正式关闭。
 - M5 的动态、通知偏好、FCM、临近提醒和通知导航尚未实现；M4 不创建动态或发送
   通知。
 
 ## 下一步
 
-1. 审查 M4 本地差异后再决定是否创建提交并推送，等待 Android 与 Functions /
-   Firebase Rules 两个远端 CI Job 通过后关闭 M4。
+1. 开始 M5“动态与通知”，实现个人动态、通知偏好、FCM、临近提醒和通知导航。
 2. 如具备真实 Firebase 项目，部署 M3/M4 Rules、索引和 Functions，配置 Play
    Integrity，并执行生产预发布 App Check / Rules / Storage 双设备 smoke test。
-3. M4 关闭后再进入 M5“动态与通知”。
