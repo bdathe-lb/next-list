@@ -50,6 +50,9 @@ import com.example.nextlist.feature.groups.MembersRoute
 import com.example.nextlist.feature.groups.PendingInviteViewModel
 import com.example.nextlist.feature.ideas.IdeaDetailRoute
 import com.example.nextlist.feature.ideas.IdeaFormRoute
+import com.example.nextlist.feature.ideas.ScheduleFormRoute
+import com.example.nextlist.feature.ideas.CompletionFormRoute
+import com.example.nextlist.feature.ideas.RandomDecisionRoute
 import com.example.nextlist.feature.profile.CompleteProfileRoute
 import com.example.nextlist.feature.profile.EditProfileRoute
 import com.example.nextlist.feature.profile.ProfileRoute
@@ -66,6 +69,9 @@ private const val GROUP_SETTINGS_ROUTE = "group/{groupId}/settings"
 private const val NEW_IDEA_ROUTE = "group/{groupId}/idea/new"
 private const val IDEA_DETAIL_ROUTE = "group/{groupId}/idea/{ideaId}"
 private const val EDIT_IDEA_ROUTE = "group/{groupId}/idea/{ideaId}/edit"
+private const val SCHEDULE_IDEA_ROUTE = "group/{groupId}/idea/{ideaId}/schedule"
+private const val COMPLETE_IDEA_ROUTE = "group/{groupId}/idea/{ideaId}/complete"
+private const val RANDOM_ROUTE = "group/{groupId}/random"
 
 @Composable
 fun NextListAppContent(
@@ -255,6 +261,9 @@ private fun SignedInApp(
                             "group/${Uri.encode(groupId)}/idea/${Uri.encode(ideaId)}",
                         )
                     },
+                    onRandom = { groupId ->
+                        navController.navigate("group/${Uri.encode(groupId)}/random")
+                    },
                     onAccessLost = ::showMessageAndReturn,
                 )
             }
@@ -288,6 +297,16 @@ private fun SignedInApp(
                             "group/${Uri.encode(groupId)}/idea/${Uri.encode(ideaId)}/edit",
                         )
                     },
+                    onSchedule = { groupId, ideaId ->
+                        navController.navigate(
+                            "group/${Uri.encode(groupId)}/idea/${Uri.encode(ideaId)}/schedule",
+                        )
+                    },
+                    onComplete = { groupId, ideaId ->
+                        navController.navigate(
+                            "group/${Uri.encode(groupId)}/idea/${Uri.encode(ideaId)}/complete",
+                        )
+                    },
                 )
             }
             composable(
@@ -300,6 +319,47 @@ private fun SignedInApp(
                 IdeaFormRoute(
                     onBack = { navController.popBackStack() },
                     onSaved = { navController.popBackStack() },
+                )
+            }
+            composable(
+                route = SCHEDULE_IDEA_ROUTE,
+                arguments = listOf(
+                    navArgument("groupId") { type = NavType.StringType },
+                    navArgument("ideaId") { type = NavType.StringType },
+                ),
+            ) {
+                ScheduleFormRoute(
+                    onBack = { navController.popBackStack() },
+                    onSaved = { navController.popBackStack() },
+                )
+            }
+            composable(
+                route = COMPLETE_IDEA_ROUTE,
+                arguments = listOf(
+                    navArgument("groupId") { type = NavType.StringType },
+                    navArgument("ideaId") { type = NavType.StringType },
+                ),
+            ) {
+                CompletionFormRoute(
+                    onBack = { navController.popBackStack() },
+                    onSaved = { navController.popBackStack() },
+                )
+            }
+            composable(
+                route = RANDOM_ROUTE,
+                arguments = listOf(navArgument("groupId") { type = NavType.StringType }),
+            ) { entry ->
+                val groupId = entry.arguments?.getString("groupId").orEmpty()
+                RandomDecisionRoute(
+                    onBack = { navController.popBackStack() },
+                    onAddIdea = {
+                        navController.navigate("group/${Uri.encode(groupId)}/idea/new")
+                    },
+                    onArrange = { ideaId ->
+                        navController.navigate(
+                            "group/${Uri.encode(groupId)}/idea/${Uri.encode(ideaId)}/schedule",
+                        )
+                    },
                 )
             }
             composable(

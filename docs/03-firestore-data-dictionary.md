@@ -378,7 +378,7 @@
 | group `ideas` | `isDeleted ==`, `status ==` | `schedule.startAt asc` |
 | group `ideas` | `isDeleted ==`, `status ==`, `category ==` | `schedule.startAt asc` |
 | group `ideas` | `isDeleted ==`, `status ==` | `completion.completedOn desc` |
-| group `ideas` | `isDeleted ==`, `status ==`, optional `category ==`, `reactionCounts.want >=` | `reactionCounts.want asc` 或文档 ID |
+| group `ideas` | `isDeleted ==`, `status ==` | 文档 ID asc，按 200 条分页；分类和最少想参加人数在内存过滤 |
 | collection group `ideas` | `isDeleted ==`, `status ==`, `reminderSentAt ==` | `schedule.startAt asc` |
 | collection group `reactions` | `groupId ==`, `userId ==` | `updatedAt asc` |
 | collection group `rsvps` | `groupId ==`, `userId ==` | `updatedAt asc` |
@@ -392,12 +392,12 @@
 注意：
 
 - 不对只包含等值且 Firestore 自动索引已满足的查询重复建索引。
-- 随机查询使用 `>=` 后，首个 `orderBy` 必须与范围字段兼容。
+- 随机决定分别分页读取 `idea` 和 `scheduled`，每页不超过 200 条，再在内存按分类和
+  `reactionCounts.want` 过滤并等概率抽取；不能把单页查询结果直接视为完整候选集。
 - 临近提醒 collection group 查询要求 idea 文档冗余 `groupId`，便于服务端后续读取小组。
 - 每次新增查询都应在 `firestore.indexes.json` 中审查并提交。
-- M3 实际索引仅开放三状态基础列表、想法分类、最近评论，以及成员退出时清理
-  reaction/RSVP 所需查询；分类后的已安排/已完成、随机筛选和临近提醒等 M4/M5
-  复合索引在对应查询实现前不提前创建。
+- M4 已开放分类后的已安排/已完成排序索引，以及按文档 ID 分页读取随机候选所需
+  索引。临近提醒仍属于 M5，不提前创建对应索引。
 
 ## 8. 数据一致性
 
@@ -410,6 +410,8 @@
 - 移除/退出与成员计数。
 - 管理员转让。
 - 解散小组。
+- 创建或修改安排；事务检查 `schedule.revision`，首次写 1，修改原子加 1。
+- 标记完成或修改完成记录；事务保持首次完成人与完成时间不变。
 
 ### 9.2 最终一致字段
 

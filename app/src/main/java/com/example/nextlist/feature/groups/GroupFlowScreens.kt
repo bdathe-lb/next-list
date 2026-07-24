@@ -55,6 +55,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
 import com.example.nextlist.core.result.LoadState
 import com.example.nextlist.core.result.AppError
 import com.example.nextlist.core.result.toUserMessage
@@ -358,6 +359,7 @@ fun GroupDetailRoute(
     onSettings: (String) -> Unit,
     onAddIdea: (String) -> Unit,
     onOpenIdea: (String, String) -> Unit,
+    onRandom: (String) -> Unit,
     onAccessLost: (String) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: GroupDetailViewModel = hiltViewModel(),
@@ -374,6 +376,7 @@ fun GroupDetailRoute(
         onSettings = onSettings,
         onAddIdea = onAddIdea,
         onOpenIdea = onOpenIdea,
+        onRandom = onRandom,
         onSelectStatus = viewModel::selectStatus,
         onSelectCategory = viewModel::selectCategory,
         onRefresh = viewModel::refresh,
@@ -391,6 +394,7 @@ fun GroupDetailScreen(
     onSettings: (String) -> Unit,
     onAddIdea: (String) -> Unit,
     onOpenIdea: (String, String) -> Unit,
+    onRandom: (String) -> Unit,
     onSelectStatus: (IdeaStatus) -> Unit,
     onSelectCategory: (IdeaCategory?) -> Unit,
     onRefresh: () -> Unit,
@@ -467,6 +471,12 @@ fun GroupDetailScreen(
                         selected = state.selectedCategory,
                         onSelected = onSelectCategory,
                     )
+                    OutlinedButton(
+                        onClick = { onRandom(groupState.data.id) },
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    ) {
+                        Text("随机决定")
+                    }
                 }
                 IdeaListContent(
                     state = state,
@@ -610,23 +620,56 @@ private fun IdeaCard(
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                "${idea.creatorSnapshot.nickname} · ${formatIdeaTime(idea.createdAt)}",
+                when (idea.status) {
+                    IdeaStatus.IDEA ->
+                        "${idea.creatorSnapshot.nickname} · ${formatIdeaTime(idea.createdAt)}"
+                    IdeaStatus.SCHEDULED -> idea.schedule?.let {
+                        formatScheduledCardTime(it.startAt, it.timezone)
+                    } ?: "安排信息同步中"
+                    IdeaStatus.COMPLETED -> idea.completion?.let {
+                        "完成于 ${it.completedOn}"
+                    } ?: "完成记录同步中"
+                },
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
-            Row {
+            if (idea.status == IdeaStatus.SCHEDULED) {
+                val schedule = idea.schedule
+                if (schedule != null && schedule.startAt.isBefore(Instant.now())) {
+                    Text(
+                        "待完成",
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                schedule?.meetingPoint?.let { Text("集合地点：$it") }
+                Text(
+                    "${idea.rsvpCounts.going} 人参加 · ${idea.rsvpCounts.maybe} 人待定",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else if (idea.status == IdeaStatus.COMPLETED) {
+                idea.completion?.photo?.downloadUrl?.let { url ->
+                    AsyncImage(
+                        model = url,
+                        contentDescription = "${idea.title} 的完成照片缩略图",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(140.dp),
+                    )
+                }
+                idea.completion?.rating?.let { Text("评分：${"★".repeat(it)}") }
+            } else {
                 Text(
                     "${idea.reactionCounts.want} 人想参加",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                if (idea.hasPendingWrites) {
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        "等待同步",
-                        color = MaterialTheme.colorScheme.secondary,
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                }
+            }
+            if (idea.hasPendingWrites) {
+                Text(
+                    "等待同步",
+                    color = MaterialTheme.colorScheme.secondary,
+                    style = MaterialTheme.typography.labelSmall,
+                )
             }
         }
     }
@@ -636,6 +679,13 @@ private fun formatIdeaTime(instant: Instant?): String {
     if (instant == null) return "等待同步"
     return DateTimeFormatter.ofPattern("M月d日 HH:mm")
         .withZone(ZoneId.systemDefault())
+        .format(instant)
+}
+
+private fun formatScheduledCardTime(instant: Instant, timezone: String): String {
+    val zone = runCatching { ZoneId.of(timezone) }.getOrDefault(ZoneId.systemDefault())
+    return DateTimeFormatter.ofPattern("M月d日 HH:mm")
+        .withZone(zone)
         .format(instant)
 }
 

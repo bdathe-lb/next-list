@@ -4,6 +4,7 @@ import com.example.nextlist.domain.model.IdeaCategory
 import com.example.nextlist.domain.model.IdeaStatus
 import com.google.firebase.Timestamp
 import java.util.Date
+import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -60,6 +61,62 @@ class IdeaDocumentMapperTest {
         assertNull(IdeaStatus.fromWire("deleted"))
     }
 
+    @Test
+    fun `maps schedule completion RSVP aggregates and audit snapshots`() {
+        val schedule = mapOf(
+            "startAt" to Timestamp(Date(3_000)),
+            "timezone" to "Asia/Shanghai",
+            "meetingPoint" to "地铁站",
+            "note" to null,
+            "scheduledBy" to "alice",
+            "schedulerSnapshot" to mapOf("nickname" to "小林", "avatarPath" to null),
+            "scheduledAt" to Timestamp(Date(2_000)),
+            "updatedBy" to "bob",
+            "updatedAt" to Timestamp(Date(2_500)),
+            "revision" to 3L,
+        )
+        val completion = mapOf(
+            "completedOn" to "2026-07-24",
+            "timezone" to "Asia/Shanghai",
+            "photo" to mapOf(
+                "storagePath" to
+                    "groups/group-1/ideas/idea-1/completion/completed.webp",
+                "mimeType" to "image/webp",
+                "width" to 800L,
+                "height" to 600L,
+                "byteSize" to 2_000L,
+            ),
+            "review" to "很好",
+            "rating" to 5L,
+            "completedBy" to "bob",
+            "completerSnapshot" to mapOf("nickname" to "小周", "avatarPath" to null),
+            "completedAt" to Timestamp(Date(4_000)),
+            "updatedBy" to "alice",
+            "updatedAt" to Timestamp(Date(5_000)),
+        )
+        val mapped = IdeaDocumentMapper.toIdea(
+            "idea-1",
+            validIdeaData(
+                status = "completed",
+                schedule = schedule,
+                completion = completion,
+                rsvpCounts = mapOf("going" to 2L, "maybe" to 1L, "notGoing" to -1L),
+            ),
+        )
+
+        requireNotNull(mapped)
+        assertEquals(3, mapped.schedule?.revision)
+        assertEquals("地铁站", mapped.schedule?.meetingPoint)
+        assertEquals(LocalDate.of(2026, 7, 24), mapped.completion?.completedOn)
+        assertEquals(5, mapped.completion?.rating)
+        assertEquals(2, mapped.rsvpCounts.going)
+        assertEquals(0, mapped.rsvpCounts.notGoing)
+        assertEquals(
+            "groups/group-1/ideas/idea-1/completion/completed.webp",
+            mapped.completion?.photo?.storagePath,
+        )
+    }
+
     private fun validIdeaData(
         category: String = "ktv_song",
         status: String = "idea",
@@ -67,6 +124,13 @@ class IdeaDocumentMapperTest {
             "want" to 0L,
             "ok" to 0L,
             "notInterested" to 0L,
+        ),
+        schedule: Map<String, Any?>? = null,
+        completion: Map<String, Any?>? = null,
+        rsvpCounts: Map<String, Any> = mapOf(
+            "going" to 0L,
+            "maybe" to 0L,
+            "notGoing" to 0L,
         ),
         commentCount: Long = 0,
     ): Map<String, Any?> = mapOf(
@@ -85,7 +149,10 @@ class IdeaDocumentMapperTest {
         "createdBy" to "bob",
         "creatorSnapshot" to mapOf("nickname" to "小周", "avatarPath" to null),
         "status" to status,
+        "schedule" to schedule,
+        "completion" to completion,
         "reactionCounts" to reactionCounts,
+        "rsvpCounts" to rsvpCounts,
         "commentCount" to commentCount,
         "lastModifiedBy" to "bob",
         "createdAt" to Timestamp(Date(1_000)),

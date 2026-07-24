@@ -16,8 +16,11 @@ import com.example.nextlist.domain.model.IdeaComment
 import com.example.nextlist.domain.model.IdeaDraft
 import com.example.nextlist.domain.model.IdeaMedia
 import com.example.nextlist.domain.model.IdeaReaction
+import com.example.nextlist.domain.model.IdeaRsvp
+import com.example.nextlist.domain.model.IdeaStatus
 import com.example.nextlist.domain.model.MemberSnapshot
 import com.example.nextlist.domain.model.ReactionValue
+import com.example.nextlist.domain.model.RsvpValue
 import com.example.nextlist.domain.repository.AvatarRepository
 import com.example.nextlist.domain.repository.GroupRepository
 import com.example.nextlist.domain.repository.IdeaImageRepository
@@ -266,12 +269,15 @@ data class IdeaDetailUiState(
     val group: Group? = null,
     val members: List<GroupMember> = emptyList(),
     val reactions: List<IdeaReaction> = emptyList(),
+    val rsvps: List<IdeaRsvp> = emptyList(),
     val comments: LoadState<List<IdeaComment>> = LoadState.Loading,
     val currentUserId: String? = null,
     val imageUrl: String? = null,
+    val completionPhotoUrl: String? = null,
     val commentInput: String = "",
     val commentError: String? = null,
     val isReactionSubmitting: Boolean = false,
+    val isRsvpSubmitting: Boolean = false,
     val isCommentSubmitting: Boolean = false,
     val deletingCommentId: String? = null,
     val isDeletingIdea: Boolean = false,
@@ -294,12 +300,14 @@ class IdeaDetailViewModel @Inject constructor(
     )
     val uiState = mutableState.asStateFlow()
     private var resolvedImagePath: String? = null
+    private var resolvedCompletionPhotoPath: String? = null
     private val avatarUrls = mutableMapOf<String, String>()
 
     init {
         observeHeader()
         observeIdea()
         observeDiscussion()
+        observeRsvps()
     }
 
     fun onCommentChanged(value: String) {
@@ -326,6 +334,36 @@ class IdeaDetailViewModel @Inject constructor(
             mutableState.update {
                 it.copy(
                     isReactionSubmitting = false,
+                    message = (result as? AppResult.Failure)?.error?.toUserMessage(),
+                )
+            }
+        }
+    }
+
+    fun setRsvp(value: RsvpValue) {
+        val current = mutableState.value
+        if (current.isRsvpSubmitting) return
+        val idea = (current.idea as? LoadState.Content)?.data ?: return
+        val scheduleRevision = idea.schedule?.revision ?: return
+        if (idea.status != IdeaStatus.SCHEDULED) return
+        val existing = current.rsvps.firstOrNull { it.userId == current.currentUserId }
+        val isStale = existing != null && existing.scheduleRevision < scheduleRevision
+        mutableState.update { it.copy(isRsvpSubmitting = true, message = null) }
+        viewModelScope.launch {
+            val result = if (existing?.value == value && !isStale) {
+                ideaRepository.clearRsvp(groupId, ideaId)
+            } else {
+                ideaRepository.setRsvp(
+                    groupId = groupId,
+                    ideaId = ideaId,
+                    value = value,
+                    scheduleRevision = scheduleRevision,
+                    isExisting = existing != null,
+                )
+            }
+            mutableState.update {
+                it.copy(
+                    isRsvpSubmitting = false,
                     message = (result as? AppResult.Failure)?.error?.toUserMessage(),
                 )
             }
@@ -452,6 +490,7 @@ class IdeaDetailViewModel @Inject constructor(
                             )
                         }
                         resolveImage(idea.media)
+                        resolveCompletionPhoto(idea.completion?.photo)
                     }
                     is AppResult.Failure -> mutableState.update {
                         it.copy(
@@ -514,6 +553,24 @@ class IdeaDetailViewModel @Inject constructor(
         }
     }
 
+    private fun observeRsvps() {
+        viewModelScope.launch {
+            ideaRepository.observeRsvps(groupId, ideaId).collect { result ->
+                if (result is AppResult.Success) {
+                    mutableState.update {
+                        it.copy(
+                            rsvps = result.value.items.map { rsvp ->
+                                rsvp.copy(
+                                    userSnapshot = resolveAvatar(rsvp.userSnapshot),
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     private suspend fun resolveAvatar(snapshot: MemberSnapshot): MemberSnapshot {
         val path = snapshot.avatarPath ?: return snapshot
         snapshot.avatarUrl?.let { return snapshot }
@@ -535,6 +592,23 @@ class IdeaDetailViewModel @Inject constructor(
             val result = imageRepository.getDownloadUrl(path)
             if (result is AppResult.Success && resolvedImagePath == path) {
                 mutableState.update { it.copy(imageUrl = result.value) }
+            }
+        }
+    }
+
+    private fun resolveCompletionPhoto(media: IdeaMedia?) {
+        val path = media?.storagePath
+        if (path == null) {
+            resolvedCompletionPhotoPath = null
+            mutableState.update { it.copy(completionPhotoUrl = null) }
+            return
+        }
+        if (path == resolvedCompletionPhotoPath) return
+        resolvedCompletionPhotoPath = path
+        viewModelScope.launch {
+            val result = imageRepository.getDownloadUrl(path)
+            if (result is AppResult.Success && resolvedCompletionPhotoPath == path) {
+                mutableState.update { it.copy(completionPhotoUrl = result.value) }
             }
         }
     }

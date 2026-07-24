@@ -47,6 +47,16 @@ service firebase.storage {
       allow delete: if isActiveMember(groupId);
     }
 
+    match /groups/{groupId}/ideas/{ideaId}/completion/{fileName} {
+      allow read: if isActiveMember(groupId);
+      allow create, update: if isActiveMember(groupId)
+        && request.resource != null
+        && request.resource.size <= 2 * 1024 * 1024
+        && request.resource.contentType == "image/webp"
+        && fileName.matches('^[A-Za-z0-9_-]+[.]webp$');
+      allow delete: if isActiveMember(groupId);
+    }
+
     match /{allPaths=**} {
       allow read, write: if false;
     }

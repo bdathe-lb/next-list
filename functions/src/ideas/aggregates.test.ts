@@ -26,6 +26,14 @@ test("reaction values reject unsupported input", () => {
   assert.equal(aggregateTestHelpers.reactionValue(undefined), null);
 });
 
+test("RSVP values accept only the three supported states", () => {
+  assert.equal(aggregateTestHelpers.rsvpValue({value: "going"}), "going");
+  assert.equal(aggregateTestHelpers.rsvpValue({value: "maybe"}), "maybe");
+  assert.equal(aggregateTestHelpers.rsvpValue({value: "not_going"}), "not_going");
+  assert.equal(aggregateTestHelpers.rsvpValue({value: "want"}), null);
+  assert.equal(aggregateTestHelpers.rsvpValue(undefined), null);
+});
+
 test("number fields are finite non-negative integers", () => {
   assert.equal(aggregateTestHelpers.numberField(3.9), 3);
   assert.equal(aggregateTestHelpers.numberField(-2), 0);

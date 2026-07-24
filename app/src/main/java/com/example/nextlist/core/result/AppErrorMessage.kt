@@ -36,6 +36,7 @@ fun AppError.toUserMessage(operation: AppOperation = AppOperation.GENERAL): Stri
     AppError.NOT_ADMIN -> "只有小组管理员可以完成此操作"
     AppError.ADMIN_CANNOT_LEAVE -> "管理员需要先转让管理员身份，或解散小组"
     AppError.TARGET_NOT_MEMBER -> "该成员已不在小组中"
+    AppError.CONFLICT -> "内容已被其他成员更新，请确认最新内容后重试"
     AppError.VALIDATION -> when (operation) {
         AppOperation.AVATAR_UPLOAD -> "头像文件无效，请重新选择图片"
         AppOperation.REGISTER -> "请检查注册信息后重试"

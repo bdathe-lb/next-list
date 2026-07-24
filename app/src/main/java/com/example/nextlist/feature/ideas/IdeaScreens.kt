@@ -56,7 +56,9 @@ import com.example.nextlist.domain.model.Idea
 import com.example.nextlist.domain.model.IdeaCategory
 import com.example.nextlist.domain.model.IdeaComment
 import com.example.nextlist.domain.model.IdeaReaction
+import com.example.nextlist.domain.model.IdeaStatus
 import com.example.nextlist.domain.model.ReactionValue
+import com.example.nextlist.domain.model.RsvpValue
 import com.example.nextlist.feature.groups.InitialAvatar
 import java.time.Instant
 import java.time.ZoneId
@@ -260,6 +262,8 @@ fun IdeaFormScreen(
 fun IdeaDetailRoute(
     onBack: () -> Unit,
     onEdit: (String, String) -> Unit,
+    onSchedule: (String, String) -> Unit,
+    onComplete: (String, String) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: IdeaDetailViewModel = hiltViewModel(),
 ) {
@@ -273,11 +277,14 @@ fun IdeaDetailRoute(
         canDeleteIdea = viewModel.canDeleteIdea(),
         canDeleteComment = viewModel::canDeleteComment,
         onSetReaction = viewModel::setReaction,
+        onSetRsvp = viewModel::setRsvp,
         onCommentChanged = viewModel::onCommentChanged,
         onAddComment = viewModel::addComment,
         onDeleteComment = viewModel::deleteComment,
         onDeleteIdea = viewModel::deleteIdea,
         onEdit = onEdit,
+        onSchedule = onSchedule,
+        onComplete = onComplete,
         onBack = onBack,
         modifier = modifier,
     )
@@ -291,11 +298,14 @@ fun IdeaDetailScreen(
     canDeleteIdea: Boolean,
     canDeleteComment: (IdeaComment) -> Boolean,
     onSetReaction: (ReactionValue) -> Unit,
+    onSetRsvp: (RsvpValue) -> Unit,
     onCommentChanged: (String) -> Unit,
     onAddComment: () -> Unit,
     onDeleteComment: (String) -> Unit,
     onDeleteIdea: () -> Unit,
     onEdit: (String, String) -> Unit,
+    onSchedule: (String, String) -> Unit,
+    onComplete: (String, String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -357,6 +367,18 @@ fun IdeaDetailScreen(
                         imageUrl = state.imageUrl,
                     )
                 }
+                if (ideaState.data.status == IdeaStatus.IDEA) {
+                    item {
+                        Button(
+                            onClick = {
+                                onSchedule(ideaState.data.groupId, ideaState.data.id)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("安排活动")
+                        }
+                    }
+                }
                 item { HorizontalDivider() }
                 item {
                     ReactionSection(
@@ -367,6 +389,38 @@ fun IdeaDetailScreen(
                         onSetReaction = onSetReaction,
                         onShowMembers = { showReactionMembers = true },
                     )
+                }
+                if (ideaState.data.schedule != null) {
+                    item { HorizontalDivider() }
+                    item {
+                        ScheduleAndRsvpSection(
+                            idea = ideaState.data,
+                            rsvps = state.rsvps,
+                            members = state.members,
+                            currentUserId = state.currentUserId,
+                            isSubmitting = state.isRsvpSubmitting,
+                            onSetRsvp = onSetRsvp,
+                            onEditSchedule = {
+                                onSchedule(ideaState.data.groupId, ideaState.data.id)
+                            },
+                            onComplete = {
+                                onComplete(ideaState.data.groupId, ideaState.data.id)
+                            },
+                        )
+                    }
+                }
+                if (ideaState.data.completion != null) {
+                    item { HorizontalDivider() }
+                    item {
+                        CompletionSection(
+                            idea = ideaState.data,
+                            members = state.members,
+                            photoUrl = state.completionPhotoUrl,
+                            onEdit = {
+                                onComplete(ideaState.data.groupId, ideaState.data.id)
+                            },
+                        )
+                    }
                 }
                 item { HorizontalDivider() }
                 item {

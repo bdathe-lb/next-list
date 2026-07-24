@@ -4,14 +4,55 @@
 
 ## 当前阶段
 
-**M3：想法、表态与评论（已完成）**
+**M4：安排、随机与完成（已完成）**
 
-M0“项目骨架”、M1“账号与资料”和 M2“小组与邀请”均已关闭。M3 的 Android
-实现、可信聚合触发器、Security Rules、单元/集成/设备测试以及两台独立
-Pixel_9_Pro API 37 Emulator 烟测已经完成本地验收。实现提交 `83cd9ed` 的
-[GitHub Actions CI #30086419538](https://github.com/bdathe-lb/next-list/actions/runs/30086419538)
-中 Android 与 Functions and Firebase Rules 两个 Job 均通过，M3 正式关闭。
-下一阶段为 M4“安排与完成”。
+M0～M4 均已关闭。M4 的 Android 实现、可信 RSVP 聚合、Security Rules、
+单元/集成/设备测试，以及两个只读 `Pixel_9_Pro` API 37 Emulator 实例上的并行
+设备验证均已完成。实现提交 `e5b3a35` 已推送至 GitHub；远端
+[CI #30094931847](https://github.com/bdathe-lb/next-list/actions/runs/30094931847)
+的 Android 与 Functions and Firebase Rules 两个 Job 均通过，M4 正式关闭。
+
+## M4 已完成
+
+### 安排与列表
+
+- [x] 想法详情可创建安排；所有活跃成员可修改已安排内容，日期、时间、时区必填，
+  集合地点和备注按 Unicode 长度校验。
+- [x] 安排写入使用 Firestore Transaction 和 `schedule.revision`；首次为 1，修改
+  原子加 1，并保留首次安排人与时间。过期 revision 返回明确冲突并载入服务器最新
+  内容，不静默覆盖。
+- [x] 安排与完成必须联网保存并显示明确状态；提交期间禁用重复操作，普通内容编辑
+  与 RSVP 仍可使用 Firestore 离线队列。
+- [x] “已安排”按 `schedule.startAt` 升序，显示本地时区时间、集合地点、可信 RSVP
+  聚合和过期“待完成”；“已完成”按 `completion.completedOn` 倒序，显示日期、评分
+  和可选缩略图。
+- [x] 详情页保留原安排审计；完成后继续展示最终 RSVP 分组与完成记录审计。
+
+### RSVP 与随机决定
+
+- [x] 活跃成员可选择、切换或取消 `going / maybe / not_going`；文档绑定本人 uid、
+  当前成员快照和选择时的 `scheduleRevision`。
+- [x] 修改安排不清空 RSVP；旧 revision 在详情和成员明细中显示“安排已变化，请
+  确认”，用户再次选择可刷新 revision。
+- [x] Functions 从真实 RSVP 子集合事务重算三类人数，并用 `functionEvents` 保证
+  重复 CloudEvent 幂等；成员退出或被移除后清理其 RSVP 并回算计数。
+- [x] 随机页支持全部/分类及最少“想参加”人数筛选；分别分页读取 `idea` 与
+  `scheduled` 候选，每页最多 200 条，在内存中使用 Kotlin `Random` 等概率抽取。
+- [x] “换一个”在存在多个候选时排除当前结果；打开安排前从服务器复查结果，若已
+  完成或删除则自动移除并重抽，离线时给出可恢复错误。
+
+### 完成、安全与清理
+
+- [x] 已安排内容可标记完成；默认当天，支持合法时区、可选单张完成照片、500 字
+  评价和 1～5 整数评分，已完成内容可继续修改完成记录。
+- [x] 完成写入使用 Transaction，原子切换状态并保留首次完成人/时间；修改只更新
+  修改审计。完成照片复用 WebP/EXIF/2 MB 处理流程，写入失败清理新上传对象并保留
+  表单，替换或移除旧照片由客户端与 Function 安全清理。
+- [x] Firestore Rules 精确校验安排、完成、RSVP 字段形状、枚举、快照、服务端时间、
+  状态转换、revision 与聚合不可变性；Storage Rules 只允许活跃成员写精确完成照片
+  路径、WebP 和不超过 2 MB 的对象。
+- [x] 新增 M4 列表与随机分页所需索引；M4 不创建个人动态、不发送 FCM，也未实现
+  M5 临近提醒。
 
 ## M3 已完成
 
@@ -48,7 +89,8 @@ Pixel_9_Pro API 37 Emulator 烟测已经完成本地验收。实现提交 `83cd9
 - [x] 评论最近 50 条实时监听，服务端按时间倒序查询后在界面按正序显示。
 - [x] 评论作者或管理员可二次确认后软删除；评论不可编辑，删除正文不再可读。
 - [x] 成员退出或被移除后，Functions 清理其当前表态和 RSVP 占位数据。
-- [x] M3 不创建个人动态，也没有 FCM 发送入口；M4/M5 写入继续由 Rules 拒绝。
+- [x] M3 不创建个人动态，也没有 FCM 发送入口；M3 关闭时 M4/M5 写入仍由 Rules
+  拒绝。
 
 ### 聚合、安全与并发
 
@@ -62,8 +104,8 @@ Pixel_9_Pro API 37 Emulator 烟测已经完成本地验收。实现提交 `83cd9
   修改正文。
 - [x] 表态文档 ID、`userId` 和登录用户一致；评论身份与成员快照不能伪造；已删除
   内容不能继续表态或评论。
-- [x] 仅加入当前 M3 查询和成员退出清理所需复合索引；安排、RSVP 和完成写入仍为
-  安全占位。
+- [x] M3 关闭时仅加入该阶段查询和成员退出清理所需复合索引；安排、RSVP 和完成
+  写入当时仍为安全占位。
 
 ## M2 已完成
 
@@ -115,18 +157,40 @@ Pixel_9_Pro API 37 Emulator 烟测已经完成本地验收。实现提交 `83cd9
 
 | 检查 | 状态 | 结果 |
 | --- | --- | --- |
-| Android 单元测试 | 通过 | 40/40，含 Unicode 校验、DTO、状态、权限、头像、重试和防重复提交 |
+| Android 单元测试 | 通过 | 56/56，含安排/完成校验、revision 冲突、过期 RSVP、图片失败恢复、随机均匀性和一次性导航 |
 | Android Lint | 通过 | 0 errors；仅保留依赖版本提示 |
 | Debug APK | 通过 | `assembleDebug` |
-| Compose / Android 设备测试 | 通过 | 14/14，在两台 Pixel_9_Pro API 37 上各执行一次，共 28 次通过 |
+| Compose / Android 设备测试 | 通过 | 22/22，在两个 Pixel_9_Pro API 37 实例上各执行一次，共 44 次通过 |
 | Functions lint/typecheck | 通过 | ESLint + TypeScript |
-| Functions 单元测试 | 通过 | 10/10，含 M2 基线与 M3 聚合输入/桶规则 |
-| Functions Emulator 集成 | 通过 | 2/2 场景；M2 事务基线及 M3 并发、幂等、聚合、清理 |
-| Firestore Rules | 通过 | 27/27 allow/deny 用例 |
-| Storage Rules | 通过 | 9/9 allow/deny 用例 |
+| Functions 单元测试 | 通过 | 11/11，含 M2/M3 基线与 M4 RSVP 聚合输入规则 |
+| Functions Emulator 集成 | 通过 | 3/3 场景；含并发安排、revision 冲突、RSVP 幂等/清理、完成与无 M5 动态 |
+| Firestore Rules | 通过 | 32/32 allow/deny 用例 |
+| Storage Rules | 通过 | 11/11 allow/deny 用例 |
 | Release APK | 通过 | `assembleRelease`，未连接 Emulator |
-| API 37 M3 双设备烟测 | 通过 | CRUD、双人表态、成员明细、评论、软删除、实时计数 |
-| GitHub Actions | 通过 | [CI #30086419538](https://github.com/bdathe-lb/next-list/actions/runs/30086419538)，Android 与 Functions and Firebase Rules 两个 Job |
+| API 37 M4 双设备烟测 | 通过 | 两个只读 Pixel_9_Pro 实例并行执行完整 22 条设备用例 |
+| GitHub Actions | 通过 | M4 [CI #30094931847](https://github.com/bdathe-lb/next-list/actions/runs/30094931847)；Android 与 Functions and Firebase Rules 两个 Job 均通过 |
+
+### API 37 M4 烟测明细
+
+设备：两个并行只读 `Pixel_9_Pro` 实例，API 37；后端：同一套 `demo-nextlist`
+Auth、Firestore、Functions 与 Storage Emulator。
+
+- A 与 B 使用两个已验证虚拟账号进入同一 2 人小组；A 安排想法后，B 的“想法”
+  标签实时移除该卡片，“已安排”显示时间、集合地点和 0/0 RSVP。
+- A 选择“参加”、B 选择“待定”，两端均实时显示 1 人参加、1 人待定和 0 人未选择。
+- A 把时间从 18:30 修改为 19:15 后，两端均显示第 2 版与“安排已变化，请确认”。
+- A、B 同时载入第 2 版并分别改为 20:00/20:30；A 先保存为第 3 版，B 后提交时
+  显示明确冲突，并自动载入 20:00 最新安排，没有静默覆盖。
+- 随机决定可在未完成想法和已安排内容间抽取；“换一个”在两个候选间不重复，
+  已安排结果的“安排这个”载入现有 revision。烟测发现并修复了返回随机页时一次性
+  导航未消费导致循环进入安排页的问题，并增加单元回归测试。
+- B 标记完成并保存评价与 4 星，A 实时看到卡片从“已安排”消失并进入“已完成”；
+  B 再改为 5 星后，A 的完成卡片实时更新。
+- 最终 Emulator 数据为小组 `idea/scheduled/completed = 1/0/1`、安排 revision 3、
+  RSVP `going/maybe/notGoing = 1/1/0`；两位用户的 `feed` 和 `notifications`
+  子集合均为 0。
+- 除真实联动流程外，每台还执行 22 条 Compose/Android 设备用例且 0 失败，共
+  44 次通过。
 
 ### API 37 M3 烟测明细
 
@@ -174,6 +238,8 @@ M2 远端 CI：[CI #30078762899](https://github.com/bdathe-lb/next-list/actions/
 提交 `fb8286a` 的 Android 与 Functions and Firebase Rules 两个 Job 均通过。
 M3 远端 CI：[CI #30086419538](https://github.com/bdathe-lb/next-list/actions/runs/30086419538)，
 提交 `83cd9ed` 的 Android 与 Functions and Firebase Rules 两个 Job 均通过。
+M4 远端 CI：[CI #30094931847](https://github.com/bdathe-lb/next-list/actions/runs/30094931847)，
+提交 `e5b3a35` 的 Android 与 Functions and Firebase Rules 两个 Job 均通过。
 
 ## 当前限制与外部配置
 
@@ -183,13 +249,13 @@ M3 远端 CI：[CI #30086419538](https://github.com/bdathe-lb/next-list/actions/
   仍是外部配置事项。
 - 邮件发件模板/域名、动态链接落地页、生产监控、隐私政策和账号注销按后续发布
   加固计划处理。
-- M3 的 Firestore/Storage Rules、复合索引和 Functions 尚未部署到真实项目；生产
-  环境还需部署后执行 App Check、Rules、图片上传和两设备预发布 smoke test。
-- M4 的安排、RSVP、随机决定和完成记录，以及 M5 的动态、通知偏好业务、FCM、
-  临近提醒和通知导航均未实现；对应客户端写入口仍关闭。
+- M3/M4 的 Firestore/Storage Rules、复合索引和 Functions 尚未部署到真实项目；
+  生产环境还需部署后执行 App Check、Rules、图片上传和两设备预发布 smoke test。
+- M5 的动态、通知偏好、FCM、临近提醒和通知导航尚未实现；M4 不创建动态或发送
+  通知。
 
 ## 下一步
 
-1. 进入 M4“安排与完成”，实现活动安排、RSVP、随机决定和完成记录。
-2. 如具备真实 Firebase 项目，部署 M3 Rules、索引和 Functions，配置 Play
-   Integrity，并执行生产预发布 App Check / Rules / Storage smoke test。
+1. 开始 M5“动态与通知”，实现个人动态、通知偏好、FCM、临近提醒和通知导航。
+2. 如具备真实 Firebase 项目，部署 M3/M4 Rules、索引和 Functions，配置 Play
+   Integrity，并执行生产预发布 App Check / Rules / Storage 双设备 smoke test。

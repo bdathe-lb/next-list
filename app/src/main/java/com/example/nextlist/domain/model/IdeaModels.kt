@@ -1,6 +1,7 @@
 package com.example.nextlist.domain.model
 
 import java.time.Instant
+import java.time.LocalDate
 
 enum class IdeaCategory(
     val wireValue: String,
@@ -51,6 +52,38 @@ data class ReactionCounts(
     val notInterested: Int = 0,
 )
 
+data class RsvpCounts(
+    val going: Int = 0,
+    val maybe: Int = 0,
+    val notGoing: Int = 0,
+)
+
+data class IdeaSchedule(
+    val startAt: Instant,
+    val timezone: String,
+    val meetingPoint: String?,
+    val note: String?,
+    val scheduledBy: String,
+    val schedulerSnapshot: MemberSnapshot,
+    val scheduledAt: Instant?,
+    val updatedBy: String,
+    val updatedAt: Instant?,
+    val revision: Int,
+)
+
+data class IdeaCompletion(
+    val completedOn: LocalDate,
+    val timezone: String,
+    val photo: IdeaMedia?,
+    val review: String?,
+    val rating: Int?,
+    val completedBy: String,
+    val completerSnapshot: MemberSnapshot,
+    val completedAt: Instant?,
+    val updatedBy: String,
+    val updatedAt: Instant?,
+)
+
 data class Idea(
     val id: String,
     val groupId: String,
@@ -67,6 +100,9 @@ data class Idea(
     val lastModifiedBy: String,
     val createdAt: Instant?,
     val updatedAt: Instant?,
+    val schedule: IdeaSchedule? = null,
+    val completion: IdeaCompletion? = null,
+    val rsvpCounts: RsvpCounts = RsvpCounts(),
     val hasPendingWrites: Boolean = false,
 )
 
@@ -76,6 +112,22 @@ data class IdeaDraft(
     val note: String?,
     val locationOrLink: String?,
     val media: IdeaMedia?,
+)
+
+data class ScheduleDraft(
+    val startAt: Instant,
+    val timezone: String,
+    val meetingPoint: String?,
+    val note: String?,
+    val expectedRevision: Int,
+)
+
+data class CompletionDraft(
+    val completedOn: LocalDate,
+    val timezone: String,
+    val photo: IdeaMedia?,
+    val review: String?,
+    val rating: Int?,
 )
 
 enum class ReactionValue(
@@ -96,6 +148,31 @@ enum class ReactionValue(
 data class IdeaReaction(
     val userId: String,
     val value: ReactionValue,
+    val userSnapshot: MemberSnapshot,
+    val createdAt: Instant?,
+    val updatedAt: Instant?,
+    val hasPendingWrites: Boolean = false,
+)
+
+enum class RsvpValue(
+    val wireValue: String,
+    val label: String,
+) {
+    GOING("going", "参加"),
+    MAYBE("maybe", "待定"),
+    NOT_GOING("not_going", "不参加"),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): RsvpValue? =
+            entries.firstOrNull { it.wireValue == value }
+    }
+}
+
+data class IdeaRsvp(
+    val userId: String,
+    val value: RsvpValue,
+    val scheduleRevision: Int,
     val userSnapshot: MemberSnapshot,
     val createdAt: Instant?,
     val updatedAt: Instant?,

@@ -22,6 +22,7 @@ import com.example.nextlist.domain.model.IdeaStatus
 import com.example.nextlist.domain.model.RealtimeItems
 import com.example.nextlist.domain.repository.GroupRepository
 import com.example.nextlist.domain.repository.IdeaRepository
+import com.example.nextlist.domain.repository.IdeaImageRepository
 import com.example.nextlist.domain.repository.AvatarRepository
 import com.example.nextlist.domain.repository.PendingInviteRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -286,6 +287,7 @@ class GroupDetailViewModel @Inject constructor(
     private val repository: GroupRepository,
     private val ideaRepository: IdeaRepository,
     private val avatarRepository: AvatarRepository,
+    private val imageRepository: IdeaImageRepository,
 ) : ViewModel() {
     private val groupId = savedStateHandle.get<String>("groupId").orEmpty()
     private val mutableState = MutableStateFlow(
@@ -377,12 +379,17 @@ class GroupDetailViewModel @Inject constructor(
                     )
                 }
                 .collect { result ->
+                    val resolvedIdeas = if (result is AppResult.Success) {
+                        resolveCompletionPhotos(result.value.items)
+                    } else {
+                        emptyList()
+                    }
                     mutableState.update { current ->
                         when (result) {
                             is AppResult.Success -> {
                                 val realtime: RealtimeItems<Idea> = result.value
                                 current.copy(
-                                    ideas = if (realtime.items.isEmpty()) {
+                                    ideas = if (resolvedIdeas.isEmpty()) {
                                         LoadState.Empty(
                                             when {
                                                 current.selectedStatus == IdeaStatus.IDEA &&
@@ -397,7 +404,7 @@ class GroupDetailViewModel @Inject constructor(
                                         )
                                     } else {
                                         LoadState.Content(
-                                            realtime.items,
+                                            resolvedIdeas,
                                             realtime.hasPendingWrites,
                                         )
                                     },
@@ -417,6 +424,20 @@ class GroupDetailViewModel @Inject constructor(
                 }
         }
     }
+
+    private suspend fun resolveCompletionPhotos(ideas: List<Idea>): List<Idea> =
+        ideas.map { idea ->
+            val photo = idea.completion?.photo ?: return@map idea
+            if (photo.downloadUrl != null) return@map idea
+            when (val result = imageRepository.getDownloadUrl(photo.storagePath)) {
+                is AppResult.Success -> idea.copy(
+                    completion = idea.completion.copy(
+                        photo = photo.copy(downloadUrl = result.value),
+                    ),
+                )
+                is AppResult.Failure -> idea
+            }
+        }
 }
 
 data class MembersUiState(

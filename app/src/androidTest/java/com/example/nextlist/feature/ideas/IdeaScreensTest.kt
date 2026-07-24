@@ -7,6 +7,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import com.example.nextlist.core.designsystem.NextListTheme
 import com.example.nextlist.core.result.LoadState
 import com.example.nextlist.domain.model.Group
@@ -41,6 +42,7 @@ class IdeaScreensTest {
                     onSettings = {},
                     onAddIdea = {},
                     onOpenIdea = { _, _ -> },
+                    onRandom = {},
                     onSelectStatus = {},
                     onSelectCategory = {},
                     onRefresh = {},
@@ -68,6 +70,7 @@ class IdeaScreensTest {
                     onSettings = {},
                     onAddIdea = {},
                     onOpenIdea = { _, _ -> },
+                    onRandom = {},
                     onSelectStatus = {},
                     onSelectCategory = { selected = it },
                     onRefresh = {},
@@ -141,11 +144,14 @@ class IdeaScreensTest {
                     canDeleteIdea = false,
                     canDeleteComment = { false },
                     onSetReaction = {},
+                    onSetRsvp = {},
                     onCommentChanged = {},
                     onAddComment = {},
                     onDeleteComment = {},
                     onDeleteIdea = {},
                     onEdit = { _, _ -> },
+                    onSchedule = { _, _ -> },
+                    onComplete = { _, _ -> },
                     onBack = {},
                 )
             }
@@ -156,7 +162,7 @@ class IdeaScreensTest {
         composeRule.onNodeWithText("都可以").assertIsDisplayed()
         composeRule.onNodeWithText("不感兴趣").assertIsDisplayed()
         composeRule.onNodeWithText("写下评论").assertIsDisplayed()
-        composeRule.onNodeWithText("发布评论").assertIsDisplayed()
+        composeRule.onNodeWithText("发布评论").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -189,11 +195,14 @@ class IdeaScreensTest {
                     canDeleteIdea = canDelete,
                     canDeleteComment = { false },
                     onSetReaction = {},
+                    onSetRsvp = {},
                     onCommentChanged = {},
                     onAddComment = {},
                     onDeleteComment = {},
                     onDeleteIdea = {},
                     onEdit = { _, _ -> },
+                    onSchedule = { _, _ -> },
+                    onComplete = { _, _ -> },
                     onBack = {},
                 )
             }

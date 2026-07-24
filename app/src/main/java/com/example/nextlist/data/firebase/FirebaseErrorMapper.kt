@@ -43,6 +43,7 @@ internal fun Throwable.toAppError(): AppError = when (this) {
         FirebaseFirestoreException.Code.PERMISSION_DENIED -> AppError.PERMISSION_DENIED
         FirebaseFirestoreException.Code.NOT_FOUND -> AppError.NOT_FOUND
         FirebaseFirestoreException.Code.ALREADY_EXISTS -> AppError.ALREADY_EXISTS
+        FirebaseFirestoreException.Code.ABORTED -> AppError.CONFLICT
         FirebaseFirestoreException.Code.RESOURCE_EXHAUSTED -> AppError.RATE_LIMITED
         FirebaseFirestoreException.Code.UNAVAILABLE,
         FirebaseFirestoreException.Code.DEADLINE_EXCEEDED,
@@ -74,6 +75,7 @@ internal fun businessCodeToAppError(code: String?): AppError? = when (code) {
     "INVITE_EXPIRED" -> AppError.INVITE_EXPIRED
     "ADMIN_CANNOT_LEAVE" -> AppError.ADMIN_CANNOT_LEAVE
     "TARGET_NOT_MEMBER" -> AppError.TARGET_NOT_MEMBER
+    "CONFLICT" -> AppError.CONFLICT
     "RATE_LIMITED" -> AppError.RATE_LIMITED
     else -> null
 }
