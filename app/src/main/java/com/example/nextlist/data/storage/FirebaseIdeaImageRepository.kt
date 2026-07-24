@@ -27,10 +27,25 @@ class FirebaseIdeaImageRepository @Inject constructor(
         ideaId: String,
         sourceUri: String,
     ): AppResult<IdeaMedia> {
+        return upload(groupId, ideaId, "cover", sourceUri)
+    }
+
+    override suspend fun uploadCompletion(
+        groupId: String,
+        ideaId: String,
+        sourceUri: String,
+    ): AppResult<IdeaMedia> = upload(groupId, ideaId, "completion", sourceUri)
+
+    private suspend fun upload(
+        groupId: String,
+        ideaId: String,
+        folder: String,
+        sourceUri: String,
+    ): AppResult<IdeaMedia> {
         val firebaseStorage = storage ?: return AppResult.Failure(AppError.UNKNOWN)
         return try {
             val image = imageProcessor.process(sourceUri)
-            val path = "groups/$groupId/ideas/$ideaId/cover/${UUID.randomUUID()}.webp"
+            val path = "groups/$groupId/ideas/$ideaId/$folder/${UUID.randomUUID()}.webp"
             val metadata = StorageMetadata.Builder()
                 .setContentType(image.contentType)
                 .build()

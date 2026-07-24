@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import com.example.nextlist.core.result.AppError
 import com.example.nextlist.core.result.AppResult
 import com.example.nextlist.core.result.LoadState
+import com.example.nextlist.core.time.AppClock
 import com.example.nextlist.domain.model.Group
 import com.example.nextlist.domain.model.GroupMember
 import com.example.nextlist.domain.model.GroupRole
@@ -15,7 +16,10 @@ import com.example.nextlist.domain.model.IdeaComment
 import com.example.nextlist.domain.model.IdeaDraft
 import com.example.nextlist.domain.model.IdeaMedia
 import com.example.nextlist.domain.model.IdeaReaction
+import com.example.nextlist.domain.model.IdeaRsvp
+import com.example.nextlist.domain.model.IdeaSchedule
 import com.example.nextlist.domain.model.IdeaStatus
+import com.example.nextlist.domain.model.CompletionDraft
 import com.example.nextlist.domain.model.InviteCredential
 import com.example.nextlist.domain.model.InviteCredentials
 import com.example.nextlist.domain.model.InvitePreview
@@ -23,12 +27,15 @@ import com.example.nextlist.domain.model.MemberSnapshot
 import com.example.nextlist.domain.model.ReactionCounts
 import com.example.nextlist.domain.model.ReactionValue
 import com.example.nextlist.domain.model.RealtimeItems
+import com.example.nextlist.domain.model.RsvpValue
+import com.example.nextlist.domain.model.ScheduleDraft
 import com.example.nextlist.domain.repository.AvatarRepository
 import com.example.nextlist.domain.repository.GroupRepository
 import com.example.nextlist.domain.repository.IdeaImageRepository
 import com.example.nextlist.domain.repository.IdeaRepository
 import com.example.nextlist.feature.groups.GroupDetailViewModel
 import java.time.Instant
+import java.time.LocalDate
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -71,6 +78,7 @@ class IdeaViewModelsTest {
             FakeGroupRepository(),
             ideas,
             FakeAvatarRepository(),
+            FakeIdeaImageRepository(),
         )
         runCurrent()
         assertTrue(viewModel.uiState.value.ideas is LoadState.Empty)
@@ -104,6 +112,7 @@ class IdeaViewModelsTest {
             FakeGroupRepository(),
             ideas,
             FakeAvatarRepository(),
+            FakeIdeaImageRepository(),
         )
         runCurrent()
         viewModel.selectCategory(IdeaCategory.MOVIE)
@@ -361,6 +370,210 @@ class IdeaViewModelsTest {
         assertNotNull(viewModel.uiState.value.reactions.single().userSnapshot.avatarUrl)
         assertNotNull(comments.single().creatorSnapshot.avatarUrl)
     }
+
+    @Test
+    fun `schedule form prevents duplicate submit and preserves online result`() =
+        runTest(dispatcher) {
+            val ideas = FakeIdeaRepository()
+            ideas.idea.value = AppResult.Success(sampleScheduledIdea(revision = 1))
+            ideas.scheduleResult = CompletableDeferred()
+            val viewModel = ScheduleFormViewModel(
+                SavedStateHandle(mapOf("groupId" to "group-1", "ideaId" to "idea-1")),
+                ideas,
+            )
+            runCurrent()
+            assertEquals("2026-07-27", viewModel.uiState.value.date)
+            viewModel.submit()
+            viewModel.submit()
+            runCurrent()
+            assertEquals(1, ideas.scheduleCalls)
+            assertTrue(viewModel.uiState.value.isSubmitting)
+            ideas.scheduleResult?.complete(AppResult.Success(Unit))
+            advanceUntilIdle()
+            assertTrue(viewModel.uiState.value.saved)
+        }
+
+    @Test
+    fun `schedule conflict reloads latest revision and asks for confirmation`() =
+        runTest(dispatcher) {
+            val ideas = FakeIdeaRepository()
+            ideas.idea.value = AppResult.Success(sampleScheduledIdea(revision = 1))
+            ideas.scheduleImmediateResult = AppResult.Failure(AppError.CONFLICT)
+            ideas.serverIdeaResult = AppResult.Success(sampleScheduledIdea(revision = 2))
+            val viewModel = ScheduleFormViewModel(
+                SavedStateHandle(mapOf("groupId" to "group-1", "ideaId" to "idea-1")),
+                ideas,
+            )
+            runCurrent()
+            viewModel.submit()
+            advanceUntilIdle()
+
+            assertTrue(viewModel.uiState.value.conflict)
+            assertEquals(2, viewModel.uiState.value.expectedRevision)
+            assertTrue(viewModel.uiState.value.message?.contains("最新安排") == true)
+        }
+
+    @Test
+    fun `stale RSVP confirms current revision while current same choice cancels`() =
+        runTest(dispatcher) {
+            val ideas = FakeIdeaRepository()
+            ideas.idea.value = AppResult.Success(sampleScheduledIdea(revision = 2))
+            ideas.rsvps.value = AppResult.Success(
+                RealtimeItems(
+                    listOf(
+                        IdeaRsvp(
+                            userId = "bob",
+                            value = RsvpValue.GOING,
+                            scheduleRevision = 1,
+                            userSnapshot = MemberSnapshot("小周", null),
+                            createdAt = Instant.EPOCH,
+                            updatedAt = Instant.EPOCH,
+                        ),
+                    ),
+                    false,
+                    false,
+                ),
+            )
+            val viewModel = IdeaDetailViewModel(
+                SavedStateHandle(mapOf("groupId" to "group-1", "ideaId" to "idea-1")),
+                FakeGroupRepository(currentUid = "bob"),
+                ideas,
+                FakeIdeaImageRepository(),
+                FakeAvatarRepository(),
+            )
+            runCurrent()
+            viewModel.setRsvp(RsvpValue.GOING)
+            advanceUntilIdle()
+            assertEquals(1, ideas.rsvpCalls)
+            assertEquals(2, ideas.lastRsvpRevision)
+            assertEquals(0, ideas.clearRsvpCalls)
+
+            ideas.rsvps.value = AppResult.Success(
+                RealtimeItems(
+                    listOf(
+                        IdeaRsvp(
+                            userId = "bob",
+                            value = RsvpValue.GOING,
+                            scheduleRevision = 2,
+                            userSnapshot = MemberSnapshot("小周", null),
+                            createdAt = Instant.EPOCH,
+                            updatedAt = Instant.EPOCH,
+                        ),
+                    ),
+                    false,
+                    false,
+                ),
+            )
+            runCurrent()
+            viewModel.setRsvp(RsvpValue.GOING)
+            advanceUntilIdle()
+            assertEquals(1, ideas.clearRsvpCalls)
+        }
+
+    @Test
+    fun `completion form defaults today and prevents duplicate online save`() =
+        runTest(dispatcher) {
+            val ideas = FakeIdeaRepository()
+            ideas.idea.value = AppResult.Success(sampleScheduledIdea(revision = 1))
+            ideas.completionResult = CompletableDeferred()
+            val viewModel = CompletionFormViewModel(
+                SavedStateHandle(mapOf("groupId" to "group-1", "ideaId" to "idea-1")),
+                ideas,
+                FakeIdeaImageRepository(),
+                object : AppClock {
+                    override fun now() = Instant.parse("2026-07-24T02:00:00Z")
+                },
+            )
+            runCurrent()
+            assertEquals("2026-07-24", viewModel.uiState.value.completedOn)
+            viewModel.onRatingChanged(5)
+            viewModel.submit()
+            viewModel.submit()
+            runCurrent()
+            assertEquals(1, ideas.completionCalls)
+            ideas.completionResult?.complete(AppResult.Success(Unit))
+            advanceUntilIdle()
+            assertTrue(viewModel.uiState.value.saved)
+        }
+
+    @Test
+    fun `completion save failure removes uploaded photo and keeps form content`() =
+        runTest(dispatcher) {
+            val ideas = FakeIdeaRepository().apply {
+                idea.value = AppResult.Success(sampleScheduledIdea(revision = 1))
+                completionImmediateResult = AppResult.Failure(AppError.UNKNOWN)
+            }
+            val images = TrackingIdeaImageRepository()
+            val viewModel = CompletionFormViewModel(
+                SavedStateHandle(mapOf("groupId" to "group-1", "ideaId" to "idea-1")),
+                ideas,
+                images,
+                object : AppClock {
+                    override fun now() = Instant.parse("2026-07-24T02:00:00Z")
+                },
+            )
+            runCurrent()
+            viewModel.onReviewChanged("保留这段评价")
+            viewModel.onRatingChanged(4)
+            viewModel.onImageSelected("content://completion-photo")
+            viewModel.submit()
+            advanceUntilIdle()
+
+            assertFalse(viewModel.uiState.value.saved)
+            assertEquals("保留这段评价", viewModel.uiState.value.review)
+            assertEquals(4, viewModel.uiState.value.rating)
+            assertEquals("content://completion-photo", viewModel.uiState.value.selectedImageUri)
+            assertEquals(listOf("completion-upload.webp"), images.deletedPaths)
+        }
+
+    @Test
+    fun `random view model handles result reroll and no candidates`() = runTest(dispatcher) {
+        val ideas = FakeIdeaRepository()
+        ideas.randomCandidates = listOf(
+            sampleIdea().copy(id = "one"),
+            sampleIdea().copy(id = "two"),
+        )
+        val viewModel = RandomDecisionViewModel(
+            SavedStateHandle(mapOf("groupId" to "group-1")),
+            FakeGroupRepository(),
+            ideas,
+        )
+        runCurrent()
+        viewModel.draw()
+        advanceUntilIdle()
+        val first = requireNotNull(viewModel.uiState.value.result).id
+        viewModel.drawAnother(kotlin.random.Random(1))
+        assertTrue(viewModel.uiState.value.result?.id != first)
+
+        ideas.randomCandidates = emptyList()
+        viewModel.draw()
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.hasDrawn)
+        assertEquals(null, viewModel.uiState.value.result)
+    }
+
+    @Test
+    fun `random arrange target is consumed after navigation`() = runTest(dispatcher) {
+        val selected = sampleScheduledIdea(revision = 3)
+        val ideas = FakeIdeaRepository().apply {
+            randomCandidates = listOf(selected)
+            serverIdeaResult = AppResult.Success(selected)
+        }
+        val viewModel = RandomDecisionViewModel(
+            SavedStateHandle(mapOf("groupId" to "group-1")),
+            FakeGroupRepository(),
+            ideas,
+        )
+        runCurrent()
+        viewModel.draw()
+        advanceUntilIdle()
+        viewModel.arrangeResult()
+        advanceUntilIdle()
+
+        assertEquals(selected.id, viewModel.uiState.value.arrangeTargetId)
+        viewModel.consumeArrangeTarget()
+        assertEquals(null, viewModel.uiState.value.arrangeTargetId)
+    }
 }
 
 private class FakeIdeaRepository : IdeaRepository {
@@ -374,6 +587,9 @@ private class FakeIdeaRepository : IdeaRepository {
     val comments = MutableStateFlow<AppResult<RealtimeItems<IdeaComment>>>(
         AppResult.Success(RealtimeItems(emptyList(), false, false)),
     )
+    val rsvps = MutableStateFlow<AppResult<RealtimeItems<IdeaRsvp>>>(
+        AppResult.Success(RealtimeItems(emptyList(), false, false)),
+    )
     var observeIdeasCalls = 0
     var lastStatus: IdeaStatus? = null
     var lastCategory: IdeaCategory? = null
@@ -383,12 +599,23 @@ private class FakeIdeaRepository : IdeaRepository {
     var commentCalls = 0
     var clearReactionCalls = 0
     var deleteCommentCalls = 0
+    var scheduleCalls = 0
+    var rsvpCalls = 0
+    var clearRsvpCalls = 0
+    var completionCalls = 0
+    var lastRsvpRevision: Int? = null
+    var randomCandidates: List<Idea> = emptyList()
     var createResult: CompletableDeferred<AppResult<Unit>>? = null
     var updateResult: CompletableDeferred<AppResult<Unit>>? = null
     var reactionResult: CompletableDeferred<AppResult<Unit>>? = null
     var commentResult: CompletableDeferred<AppResult<Unit>>? = null
     var clearReactionResult: CompletableDeferred<AppResult<Unit>>? = null
     var deleteCommentResult: CompletableDeferred<AppResult<Unit>>? = null
+    var scheduleResult: CompletableDeferred<AppResult<Unit>>? = null
+    var completionResult: CompletableDeferred<AppResult<Unit>>? = null
+    var scheduleImmediateResult: AppResult<Unit> = AppResult.Success(Unit)
+    var completionImmediateResult: AppResult<Unit> = AppResult.Success(Unit)
+    var serverIdeaResult: AppResult<Idea>? = null
 
     override fun newIdeaId(groupId: String) = "idea-new"
     override fun observeIdeas(
@@ -405,6 +632,7 @@ private class FakeIdeaRepository : IdeaRepository {
     override fun observeIdea(groupId: String, ideaId: String) = idea
     override fun observeReactions(groupId: String, ideaId: String) = reactions
     override fun observeComments(groupId: String, ideaId: String) = comments
+    override fun observeRsvps(groupId: String, ideaId: String) = rsvps
 
     override suspend fun createIdea(
         groupId: String,
@@ -460,14 +688,78 @@ private class FakeIdeaRepository : IdeaRepository {
         deleteCommentCalls += 1
         return deleteCommentResult?.await() ?: AppResult.Success(Unit)
     }
+
+    override suspend fun saveSchedule(
+        groupId: String,
+        ideaId: String,
+        draft: ScheduleDraft,
+    ): AppResult<Unit> {
+        scheduleCalls += 1
+        return scheduleResult?.await() ?: scheduleImmediateResult
+    }
+
+    override suspend fun setRsvp(
+        groupId: String,
+        ideaId: String,
+        value: RsvpValue,
+        scheduleRevision: Int,
+        isExisting: Boolean,
+    ): AppResult<Unit> {
+        rsvpCalls += 1
+        lastRsvpRevision = scheduleRevision
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun clearRsvp(groupId: String, ideaId: String): AppResult<Unit> {
+        clearRsvpCalls += 1
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun saveCompletion(
+        groupId: String,
+        ideaId: String,
+        draft: CompletionDraft,
+    ): AppResult<Unit> {
+        completionCalls += 1
+        return completionResult?.await() ?: completionImmediateResult
+    }
+
+    override suspend fun getIdeaFromServer(groupId: String, ideaId: String) =
+        serverIdeaResult ?: idea.value
+
+    override suspend fun loadRandomCandidates(
+        groupId: String,
+        category: IdeaCategory?,
+        minimumWant: Int,
+    ) = AppResult.Success(randomCandidates)
 }
 
 private class FakeIdeaImageRepository : IdeaImageRepository {
     override suspend fun uploadCover(groupId: String, ideaId: String, sourceUri: String) =
         AppResult.Success(IdeaMedia("cover.webp", "image/webp", 100, 100, 100))
+    override suspend fun uploadCompletion(groupId: String, ideaId: String, sourceUri: String) =
+        AppResult.Success(IdeaMedia("completion.webp", "image/webp", 100, 100, 100))
     override suspend fun getDownloadUrl(storagePath: String) =
         AppResult.Success("https://example.invalid/cover.webp")
     override suspend fun delete(storagePath: String) = AppResult.Success(Unit)
+}
+
+private class TrackingIdeaImageRepository : IdeaImageRepository {
+    val deletedPaths = mutableListOf<String>()
+
+    override suspend fun uploadCover(groupId: String, ideaId: String, sourceUri: String) =
+        AppResult.Success(IdeaMedia("cover-upload.webp", "image/webp", 100, 100, 100))
+
+    override suspend fun uploadCompletion(groupId: String, ideaId: String, sourceUri: String) =
+        AppResult.Success(IdeaMedia("completion-upload.webp", "image/webp", 100, 100, 100))
+
+    override suspend fun getDownloadUrl(storagePath: String) =
+        AppResult.Success("https://example.invalid/$storagePath")
+
+    override suspend fun delete(storagePath: String): AppResult<Unit> {
+        deletedPaths += storagePath
+        return AppResult.Success(Unit)
+    }
 }
 
 private class FakeGroupRepository(
@@ -550,4 +842,20 @@ private fun sampleIdea(createdBy: String = "bob") = Idea(
     lastModifiedBy = createdBy,
     createdAt = Instant.EPOCH,
     updatedAt = Instant.EPOCH,
+)
+
+private fun sampleScheduledIdea(revision: Int) = sampleIdea().copy(
+    status = IdeaStatus.SCHEDULED,
+    schedule = IdeaSchedule(
+        startAt = Instant.parse("2026-07-26T16:00:00Z"),
+        timezone = "Asia/Shanghai",
+        meetingPoint = "地铁站",
+        note = null,
+        scheduledBy = "alice",
+        schedulerSnapshot = MemberSnapshot("小林", null),
+        scheduledAt = Instant.EPOCH,
+        updatedBy = "alice",
+        updatedAt = Instant.EPOCH,
+        revision = revision,
+    ),
 )

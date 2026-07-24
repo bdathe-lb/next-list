@@ -94,6 +94,12 @@ export async function maintainGroupIdeaCounts(
   });
 
   await cleanupReplacedCover(event.params.groupId, event.params.ideaId, before, after);
+  await cleanupReplacedCompletionPhoto(
+    event.params.groupId,
+    event.params.ideaId,
+    before,
+    after,
+  );
 }
 
 function reactionValue(data: DocumentData | undefined): string | null {
@@ -146,6 +152,62 @@ export async function maintainReactionCounts(
       eventRecord(
         functionName,
         "groups/{groupId}/ideas/{ideaId}/reactions/{uid}",
+        now,
+      ),
+    );
+  });
+}
+
+function rsvpValue(data: DocumentData | undefined): string | null {
+  if (!data) return null;
+  return ["going", "maybe", "not_going"].includes(data.value) ?
+    data.value :
+    null;
+}
+
+function rsvpCountField(value: string): string {
+  return value === "not_going" ? "notGoing" : value;
+}
+
+export async function maintainRsvpCounts(
+  event: WrittenEvent<{groupId: string; ideaId: string; uid: string}>,
+): Promise<void> {
+  const database = getFirestore();
+  const functionName = "maintainRsvpCounts";
+  const eventRef = database.collection("functionEvents")
+    .doc(`${functionName}_${event.id}`);
+  const ideaRef = database.collection("groups")
+    .doc(event.params.groupId)
+    .collection("ideas")
+    .doc(event.params.ideaId);
+
+  await database.runTransaction(async (transaction) => {
+    const [processed, ideaDocument, rsvps] = await Promise.all([
+      transaction.get(eventRef),
+      transaction.get(ideaRef),
+      transaction.get(ideaRef.collection("rsvps")),
+    ]);
+    if (processed.exists) return;
+    const now = Timestamp.now();
+    if (ideaDocument.exists) {
+      const next = {
+        going: 0,
+        maybe: 0,
+        notGoing: 0,
+      };
+      rsvps.docs.forEach((document) => {
+        const value = rsvpValue(document.data());
+        if (!value) return;
+        const field = rsvpCountField(value) as keyof typeof next;
+        next[field] += 1;
+      });
+      transaction.update(ideaRef, {rsvpCounts: next});
+    }
+    transaction.create(
+      eventRef,
+      eventRecord(
+        functionName,
+        "groups/{groupId}/ideas/{ideaId}/rsvps/{uid}",
         now,
       ),
     );
@@ -252,9 +314,36 @@ async function cleanupReplacedCover(
   }
 }
 
+async function cleanupReplacedCompletionPhoto(
+  groupId: string,
+  ideaId: string,
+  before: DocumentData | undefined,
+  after: DocumentData | undefined,
+): Promise<void> {
+  const oldPath = typeof before?.completion?.photo?.storagePath === "string" ?
+    before.completion.photo.storagePath :
+    null;
+  const nextPath = typeof after?.completion?.photo?.storagePath === "string" ?
+    after.completion.photo.storagePath :
+    null;
+  const shouldDelete = oldPath !== null &&
+    (after?.isDeleted === true || oldPath !== nextPath);
+  const prefix = `groups/${groupId}/ideas/${ideaId}/completion/`;
+  if (!shouldDelete || !oldPath.startsWith(prefix) || !oldPath.endsWith(".webp")) {
+    return;
+  }
+  try {
+    await getStorage().bucket().file(oldPath).delete({ignoreNotFound: true});
+  } catch {
+    // Firestore already committed. A later retry or orphan sweep can safely
+    // retry cleanup without logging user content or local image references.
+  }
+}
+
 export const aggregateTestHelpers = {
   ideaBucket,
   reactionValue,
+  rsvpValue,
   numberField,
   isVisibleComment,
 };

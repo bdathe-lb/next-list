@@ -526,6 +526,72 @@ function validComment(
   };
 }
 
+function validSchedule(
+  userId: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    startAt: new Date("2026-07-26T06:30:00Z"),
+    timezone: "Asia/Shanghai",
+    meetingPoint: "地铁 2 号口",
+    note: "提前十分钟集合",
+    scheduledBy: userId,
+    schedulerSnapshot: {
+      nickname: userId === "alice" ? "小林" : "小周",
+      avatarPath: null,
+    },
+    scheduledAt: serverTimestamp(),
+    updatedBy: userId,
+    updatedAt: serverTimestamp(),
+    revision: 1,
+    ...overrides,
+  };
+}
+
+function validCompletion(
+  userId: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    completedOn: "2026-07-26",
+    timezone: "Asia/Shanghai",
+    photo: null,
+    review: "天气很好",
+    rating: 5,
+    completedBy: userId,
+    completerSnapshot: {
+      nickname: userId === "alice" ? "小林" : "小周",
+      avatarPath: null,
+    },
+    completedAt: serverTimestamp(),
+    updatedBy: userId,
+    updatedAt: serverTimestamp(),
+    ...overrides,
+  };
+}
+
+function validRsvp(
+  userId: string,
+  revision: number,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    groupId: "group-1",
+    ideaId: "idea-1",
+    userId,
+    value: "going",
+    scheduleRevision: revision,
+    userSnapshot: {
+      nickname: userId === "alice" ? "小林" : "小周",
+      avatarPath: null,
+    },
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    schemaVersion: 1,
+    ...overrides,
+  };
+}
+
 async function seedIdea(overrides: Record<string, unknown> = {}) {
   await seedGroup();
   await testEnvironment.withSecurityRulesDisabled(async (context) => {
@@ -762,5 +828,220 @@ test("comments reject forged authors snapshots aggregates and deleted parents", 
       doc(bob, "groups/group-1/ideas/idea-1/comments/after-delete"),
       validComment("bob"),
     ),
+  );
+});
+
+test("an active ordinary member can schedule another member's idea", async () => {
+  await seedIdea({
+    createdBy: "alice",
+    creatorSnapshot: {nickname: "小林", avatarPath: null},
+    lastModifiedBy: "alice",
+  });
+  const bob = testEnvironment.authenticatedContext("bob").firestore();
+  const idea = doc(bob, "groups/group-1/ideas/idea-1");
+  await assertSucceeds(
+    updateDoc(idea, {
+      status: "scheduled",
+      schedule: validSchedule("bob"),
+      lastModifiedBy: "bob",
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  const saved = await getDoc(idea);
+  assert.equal(saved.get("status"), "scheduled");
+  assert.equal(saved.get("schedule.revision"), 1);
+  assert.equal(saved.get("schedule.scheduledBy"), "bob");
+});
+
+test("schedule updates require the next revision and trusted audit fields", async () => {
+  await seedIdea({
+    status: "scheduled",
+    schedule: validSchedule("alice", {
+      scheduledAt: new Date("2026-07-24T00:00:00Z"),
+      updatedAt: new Date("2026-07-24T00:00:00Z"),
+    }),
+  });
+  const bob = testEnvironment.authenticatedContext("bob").firestore();
+  const idea = doc(bob, "groups/group-1/ideas/idea-1");
+  const original = (await getDoc(idea)).get("schedule");
+  await assertSucceeds(
+    updateDoc(idea, {
+      schedule: {
+        ...original,
+        startAt: new Date("2026-07-27T06:30:00Z"),
+        updatedBy: "bob",
+        updatedAt: serverTimestamp(),
+        revision: 2,
+      },
+      lastModifiedBy: "bob",
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  const latest = (await getDoc(idea)).get("schedule");
+  await assertFails(
+    updateDoc(idea, {
+      schedule: {
+        ...latest,
+        startAt: new Date("2026-07-28T06:30:00Z"),
+        updatedBy: "bob",
+        updatedAt: serverTimestamp(),
+        revision: 2,
+      },
+      lastModifiedBy: "bob",
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  await assertFails(
+    updateDoc(idea, {
+      schedule: {
+        ...latest,
+        schedulerSnapshot: {nickname: "冒名", avatarPath: null},
+        updatedBy: "bob",
+        updatedAt: serverTimestamp(),
+        revision: 3,
+      },
+      lastModifiedBy: "bob",
+      updatedAt: serverTimestamp(),
+    }),
+  );
+});
+
+test("scheduled ideas can be completed and completion audit cannot be forged", async () => {
+  await seedIdea({
+    status: "scheduled",
+    schedule: validSchedule("alice", {
+      scheduledAt: new Date("2026-07-24T00:00:00Z"),
+      updatedAt: new Date("2026-07-24T00:00:00Z"),
+    }),
+  });
+  const bob = testEnvironment.authenticatedContext("bob").firestore();
+  const idea = doc(bob, "groups/group-1/ideas/idea-1");
+  await assertSucceeds(
+    updateDoc(idea, {
+      status: "completed",
+      completion: validCompletion("bob"),
+      lastModifiedBy: "bob",
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  const savedCompletion = (await getDoc(idea)).get("completion");
+  const aliceIdea = doc(
+    testEnvironment.authenticatedContext("alice").firestore(),
+    "groups/group-1/ideas/idea-1",
+  );
+  await assertSucceeds(
+    updateDoc(aliceIdea, {
+      completion: {
+        ...savedCompletion,
+        review: "更新后的评价",
+        rating: 4,
+        updatedBy: "alice",
+        updatedAt: serverTimestamp(),
+      },
+      lastModifiedBy: "alice",
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  await assertFails(
+    updateDoc(idea, {
+      completion: {
+        ...savedCompletion,
+        completedBy: "alice",
+        updatedBy: "bob",
+        updatedAt: serverTimestamp(),
+      },
+      lastModifiedBy: "bob",
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  await assertFails(
+    updateDoc(idea, {
+      status: "scheduled",
+      completion: null,
+      lastModifiedBy: "bob",
+      updatedAt: serverTimestamp(),
+    }),
+  );
+});
+
+test("RSVP is self-only revision-bound and limited to scheduled ideas", async () => {
+  await seedIdea({
+    status: "scheduled",
+    schedule: validSchedule("alice", {
+      scheduledAt: new Date("2026-07-24T00:00:00Z"),
+      updatedAt: new Date("2026-07-24T00:00:00Z"),
+      revision: 2,
+    }),
+  });
+  const bob = testEnvironment.authenticatedContext("bob").firestore();
+  const alice = testEnvironment.authenticatedContext("alice").firestore();
+  const bobRsvp = doc(bob, "groups/group-1/ideas/idea-1/rsvps/bob");
+  await assertSucceeds(setDoc(bobRsvp, validRsvp("bob", 2)));
+  await assertSucceeds(
+    updateDoc(bobRsvp, {
+      value: "maybe",
+      scheduleRevision: 2,
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  await assertFails(
+    setDoc(
+      doc(alice, "groups/group-1/ideas/idea-1/rsvps/bob"),
+      validRsvp("bob", 2),
+    ),
+  );
+  await assertFails(
+    updateDoc(bobRsvp, {
+      value: "not_going",
+      scheduleRevision: 1,
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  await assertFails(
+    updateDoc(bobRsvp, {
+      userSnapshot: {nickname: "冒名", avatarPath: null},
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  await assertSucceeds(deleteDoc(bobRsvp));
+
+  await testEnvironment.withSecurityRulesDisabled(async (context) => {
+    await updateDoc(doc(context.firestore(), "groups/group-1/ideas/idea-1"), {
+      status: "completed",
+      completion: validCompletion("alice", {
+        completedAt: new Date("2026-07-26T08:00:00Z"),
+        updatedAt: new Date("2026-07-26T08:00:00Z"),
+      }),
+    });
+  });
+  await assertFails(setDoc(bobRsvp, validRsvp("bob", 2)));
+});
+
+test("clients still cannot write trusted aggregates reminders feed or notifications", async () => {
+  await seedIdea();
+  const bob = testEnvironment.authenticatedContext("bob").firestore();
+  await assertFails(
+    updateDoc(doc(bob, "groups/group-1/ideas/idea-1"), {
+      rsvpCounts: {going: 9, maybe: 0, notGoing: 0},
+      lastModifiedBy: "bob",
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  await assertFails(
+    updateDoc(doc(bob, "groups/group-1/ideas/idea-1"), {
+      reminderClaimedAt: serverTimestamp(),
+      lastModifiedBy: "bob",
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  await assertFails(
+    setDoc(doc(bob, "users/bob/feed/forged"), {
+      type: "schedule_created",
+    }),
+  );
+  await assertFails(
+    setDoc(doc(bob, "users/bob/notifications/forged"), {
+      type: "upcoming",
+    }),
   );
 });

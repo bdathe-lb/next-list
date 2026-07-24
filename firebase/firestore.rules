@@ -105,6 +105,132 @@ service cloud.firestore {
         );
     }
 
+    function validCompletionPhoto(groupId, ideaId, value) {
+      return value == null
+        || (
+          value is map
+          && value.keys().hasAll([
+            "storagePath",
+            "mimeType",
+            "width",
+            "height",
+            "byteSize"
+          ])
+          && value.keys().hasOnly([
+            "storagePath",
+            "mimeType",
+            "width",
+            "height",
+            "byteSize"
+          ])
+          && value.storagePath is string
+          && value.storagePath.matches(
+            '^groups/' + groupId + '/ideas/' + ideaId
+              + '/completion/[A-Za-z0-9_-]+[.]webp$'
+          )
+          && value.mimeType == "image/webp"
+          && value.width is int
+          && value.width > 0
+          && value.width <= 4096
+          && value.height is int
+          && value.height > 0
+          && value.height <= 4096
+          && value.byteSize is int
+          && value.byteSize > 0
+          && value.byteSize <= 2 * 1024 * 1024
+        );
+    }
+
+    function validTimezone(value) {
+      return value is string
+        && value.size() >= 3
+        && value.size() <= 64
+        && value.matches(
+          '^(UTC|GMT|[A-Za-z_]+(/[A-Za-z0-9_+.-]+)+)$'
+        );
+    }
+
+    function validSchedule(value) {
+      return value is map
+        && value.keys().hasAll([
+          "startAt",
+          "timezone",
+          "meetingPoint",
+          "note",
+          "scheduledBy",
+          "schedulerSnapshot",
+          "scheduledAt",
+          "updatedBy",
+          "updatedAt",
+          "revision"
+        ])
+        && value.keys().hasOnly([
+          "startAt",
+          "timezone",
+          "meetingPoint",
+          "note",
+          "scheduledBy",
+          "schedulerSnapshot",
+          "scheduledAt",
+          "updatedBy",
+          "updatedAt",
+          "revision"
+        ])
+        && value.startAt is timestamp
+        && validTimezone(value.timezone)
+        && validOptionalString(value.meetingPoint, 200)
+        && validOptionalString(value.note, 500)
+        && value.scheduledBy is string
+        && validSnapshot(value.schedulerSnapshot)
+        && value.scheduledAt is timestamp
+        && value.updatedBy is string
+        && value.updatedAt is timestamp
+        && value.revision is int
+        && value.revision >= 1;
+    }
+
+    function validCompletion(groupId, ideaId, value) {
+      return value is map
+        && value.keys().hasAll([
+          "completedOn",
+          "timezone",
+          "photo",
+          "review",
+          "rating",
+          "completedBy",
+          "completerSnapshot",
+          "completedAt",
+          "updatedBy",
+          "updatedAt"
+        ])
+        && value.keys().hasOnly([
+          "completedOn",
+          "timezone",
+          "photo",
+          "review",
+          "rating",
+          "completedBy",
+          "completerSnapshot",
+          "completedAt",
+          "updatedBy",
+          "updatedAt"
+        ])
+        && value.completedOn is string
+        && value.completedOn.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && validTimezone(value.timezone)
+        && validCompletionPhoto(groupId, ideaId, value.photo)
+        && validOptionalString(value.review, 500)
+        && (
+          value.rating == null
+          || (value.rating is int && value.rating >= 1 && value.rating <= 5)
+        )
+        && value.completedBy is string
+        && validSnapshot(value.completerSnapshot)
+        && value.completedAt is timestamp
+        && value.updatedBy is string
+        && value.updatedAt is timestamp;
+    }
+
     function validReactionCounts(value) {
       return value is map
         && value.keys().hasAll(["want", "ok", "notInterested"])
@@ -193,10 +319,33 @@ service cloud.firestore {
         && value.createdBy is string
         && validSnapshot(value.creatorSnapshot)
         && validIdeaStatus(value.status)
+        && (
+          (value.status == "idea"
+            && value.schedule == null
+            && value.completion == null)
+          || (value.status == "scheduled"
+            && validSchedule(value.schedule)
+            && value.completion == null)
+          || (value.status == "completed"
+            && validSchedule(value.schedule)
+            && validCompletion(groupId, ideaId, value.completion))
+        )
         && validReactionCounts(value.reactionCounts)
         && validRsvpCounts(value.rsvpCounts)
         && value.commentCount is int
         && value.commentCount >= 0
+        && (
+          value.reminderClaimedAt == null
+          || value.reminderClaimedAt is timestamp
+        )
+        && (
+          value.reminderSentAt == null
+          || value.reminderSentAt is timestamp
+        )
+        && (
+          value.reminderSkippedReason == null
+          || value.reminderSkippedReason is string
+        )
         && value.lastModifiedBy is string
         && value.createdAt is timestamp
         && value.updatedAt is timestamp
@@ -204,6 +353,16 @@ service cloud.firestore {
         && (value.deletedAt == null || value.deletedAt is timestamp)
         && (value.deletedBy == null || value.deletedBy is string)
         && value.schemaVersion == 1;
+    }
+
+    function validEditableIdeaFields(groupId, ideaId, value) {
+      return value.title is string
+        && value.title.size() >= 1
+        && value.title.size() <= 80
+        && validCategory(value.category)
+        && validOptionalString(value.note, 1000)
+        && validMedia(groupId, ideaId, value.media)
+        && validOptionalString(value.locationOrLink, 500);
     }
 
     function parentIdeaAllowsInteraction(groupId, ideaId) {
@@ -283,6 +442,57 @@ service cloud.firestore {
         && value.isDeleted is bool
         && (value.deletedAt == null || value.deletedAt is timestamp)
         && (value.deletedBy == null || value.deletedBy is string)
+        && value.schemaVersion == 1;
+    }
+
+    function parentIdeaScheduleRevision(groupId, ideaId) {
+      return get(
+        /databases/$(database)/documents/groups/$(groupId)/ideas/$(ideaId)
+      ).data.schedule.revision;
+    }
+
+    function parentIdeaAllowsRsvp(groupId, ideaId) {
+      let idea = get(
+        /databases/$(database)/documents/groups/$(groupId)/ideas/$(ideaId)
+      ).data;
+      return isActiveMember(groupId)
+        && idea.isDeleted == false
+        && idea.status == "scheduled"
+        && validSchedule(idea.schedule);
+    }
+
+    function validRsvpShape(groupId, ideaId, uid, value) {
+      return value.keys().hasAll([
+          "groupId",
+          "ideaId",
+          "userId",
+          "value",
+          "scheduleRevision",
+          "userSnapshot",
+          "createdAt",
+          "updatedAt",
+          "schemaVersion"
+        ])
+        && value.keys().hasOnly([
+          "groupId",
+          "ideaId",
+          "userId",
+          "value",
+          "scheduleRevision",
+          "userSnapshot",
+          "createdAt",
+          "updatedAt",
+          "schemaVersion"
+        ])
+        && value.groupId == groupId
+        && value.ideaId == ideaId
+        && value.userId == uid
+        && value.value in ["going", "maybe", "not_going"]
+        && value.scheduleRevision is int
+        && value.scheduleRevision >= 1
+        && validSnapshot(value.userSnapshot)
+        && value.createdAt is timestamp
+        && value.updatedAt is timestamp
         && value.schemaVersion == 1;
     }
 
@@ -447,9 +657,102 @@ service cloud.firestore {
           && request.resource.data.deletedAt == null
           && request.resource.data.deletedBy == null;
         allow update: if isActiveMember(groupId)
-          && validIdeaShape(groupId, ideaId, request.resource.data)
           && (
             (
+              resource.data.isDeleted == false
+              && request.resource.data.isDeleted == false
+              && resource.data.status == "scheduled"
+              && request.resource.data.status == "completed"
+              && request.resource.data.schedule == resource.data.schedule
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                "status",
+                "completion",
+                "lastModifiedBy",
+                "updatedAt"
+              ])
+              && validCompletion(groupId, ideaId, request.resource.data.completion)
+              && request.resource.data.completion.completedBy == request.auth.uid
+              && request.resource.data.completion.completerSnapshot
+                == currentProfileSnapshot(groupId)
+              && request.resource.data.completion.completedAt == request.time
+              && request.resource.data.completion.updatedBy == request.auth.uid
+              && request.resource.data.completion.updatedAt == request.time
+              && request.resource.data.lastModifiedBy == request.auth.uid
+              && request.resource.data.updatedAt == request.time
+            )
+            || (
+              resource.data.isDeleted == false
+              && request.resource.data.isDeleted == false
+              && resource.data.status == "completed"
+              && request.resource.data.status == "completed"
+              && request.resource.data.schedule == resource.data.schedule
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                "completion",
+                "lastModifiedBy",
+                "updatedAt"
+              ])
+              && validCompletion(groupId, ideaId, request.resource.data.completion)
+              && request.resource.data.completion.completedBy
+                == resource.data.completion.completedBy
+              && request.resource.data.completion.completerSnapshot
+                == resource.data.completion.completerSnapshot
+              && request.resource.data.completion.completedAt
+                == resource.data.completion.completedAt
+              && request.resource.data.completion.updatedBy == request.auth.uid
+              && request.resource.data.completion.updatedAt == request.time
+              && request.resource.data.lastModifiedBy == request.auth.uid
+              && request.resource.data.updatedAt == request.time
+            )
+            || (
+              resource.data.isDeleted == false
+              && request.resource.data.isDeleted == false
+              && resource.data.status == "idea"
+              && request.resource.data.status == "scheduled"
+              && resource.data.schedule == null
+              && request.resource.data.completion == null
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                "status",
+                "schedule",
+                "lastModifiedBy",
+                "updatedAt"
+              ])
+              && validSchedule(request.resource.data.schedule)
+              && request.resource.data.schedule.revision == 1
+              && request.resource.data.schedule.scheduledBy == request.auth.uid
+              && request.resource.data.schedule.schedulerSnapshot
+                == currentProfileSnapshot(groupId)
+              && request.resource.data.schedule.scheduledAt == request.time
+              && request.resource.data.schedule.updatedBy == request.auth.uid
+              && request.resource.data.schedule.updatedAt == request.time
+              && request.resource.data.lastModifiedBy == request.auth.uid
+              && request.resource.data.updatedAt == request.time
+            )
+            || (
+              resource.data.isDeleted == false
+              && request.resource.data.isDeleted == false
+              && resource.data.status == "scheduled"
+              && request.resource.data.status == "scheduled"
+              && request.resource.data.completion == null
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                "schedule",
+                "lastModifiedBy",
+                "updatedAt"
+              ])
+              && validSchedule(request.resource.data.schedule)
+              && request.resource.data.schedule.scheduledBy
+                == resource.data.schedule.scheduledBy
+              && request.resource.data.schedule.schedulerSnapshot
+                == resource.data.schedule.schedulerSnapshot
+              && request.resource.data.schedule.scheduledAt
+                == resource.data.schedule.scheduledAt
+              && request.resource.data.schedule.revision
+                == resource.data.schedule.revision + 1
+              && request.resource.data.schedule.updatedBy == request.auth.uid
+              && request.resource.data.schedule.updatedAt == request.time
+              && request.resource.data.lastModifiedBy == request.auth.uid
+              && request.resource.data.updatedAt == request.time
+            )
+            || (
               resource.data.isDeleted == false
               && request.resource.data.isDeleted == false
               && resource.data.createdBy == request.auth.uid
@@ -462,6 +765,7 @@ service cloud.firestore {
                 "lastModifiedBy",
                 "updatedAt"
               ])
+              && validEditableIdeaFields(groupId, ideaId, request.resource.data)
               && request.resource.data.lastModifiedBy == request.auth.uid
               && request.resource.data.updatedAt == request.time
             )
@@ -552,7 +856,32 @@ service cloud.firestore {
             && get(
               /databases/$(database)/documents/groups/$(groupId)/ideas/$(ideaId)
             ).data.isDeleted == false;
-          allow write: if false;
+          allow create: if signedIn()
+            && request.auth.uid == uid
+            && parentIdeaAllowsRsvp(groupId, ideaId)
+            && validRsvpShape(groupId, ideaId, uid, request.resource.data)
+            && request.resource.data.scheduleRevision
+              == parentIdeaScheduleRevision(groupId, ideaId)
+            && request.resource.data.userSnapshot == currentProfileSnapshot(groupId)
+            && request.resource.data.createdAt == request.time
+            && request.resource.data.updatedAt == request.time;
+          allow update: if signedIn()
+            && request.auth.uid == uid
+            && parentIdeaAllowsRsvp(groupId, ideaId)
+            && validRsvpShape(groupId, ideaId, uid, request.resource.data)
+            && request.resource.data.scheduleRevision
+              == parentIdeaScheduleRevision(groupId, ideaId)
+            && request.resource.data.userSnapshot == currentProfileSnapshot(groupId)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              "value",
+              "scheduleRevision",
+              "userSnapshot",
+              "updatedAt"
+            ])
+            && request.resource.data.updatedAt == request.time;
+          allow delete: if signedIn()
+            && request.auth.uid == uid
+            && parentIdeaAllowsRsvp(groupId, ideaId);
         }
       }
     }

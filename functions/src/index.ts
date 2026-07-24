@@ -27,6 +27,7 @@ import {
   maintainCommentCount,
   maintainGroupIdeaCounts,
   maintainReactionCounts,
+  maintainRsvpCounts,
 } from "./ideas/aggregates";
 
 initializeApp();
@@ -81,6 +82,10 @@ export const updateGroupIdeaCounts = onDocumentWritten(
 export const updateIdeaReactionCounts = onDocumentWritten(
   "groups/{groupId}/ideas/{ideaId}/reactions/{uid}",
   maintainReactionCounts,
+);
+export const updateIdeaRsvpCounts = onDocumentWritten(
+  "groups/{groupId}/ideas/{ideaId}/rsvps/{uid}",
+  maintainRsvpCounts,
 );
 export const updateIdeaCommentCount = onDocumentWritten(
   "groups/{groupId}/ideas/{ideaId}/comments/{commentId}",

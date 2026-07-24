@@ -10,6 +10,12 @@ interface IdeaImageRepository {
         sourceUri: String,
     ): AppResult<IdeaMedia>
 
+    suspend fun uploadCompletion(
+        groupId: String,
+        ideaId: String,
+        sourceUri: String,
+    ): AppResult<IdeaMedia>
+
     suspend fun getDownloadUrl(storagePath: String): AppResult<String>
 
     suspend fun delete(storagePath: String): AppResult<Unit>

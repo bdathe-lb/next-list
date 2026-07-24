@@ -5,8 +5,9 @@
 ## 当前状态
 
 M0“项目骨架”、M1“账号与资料”、M2“小组与邀请”和 M3“想法、表态与评论”
-已经完成。下一阶段为 M4“安排与完成”。开发进度见 [PROGRESS.md](./PROGRESS.md)，
-产品和技术设计见 [docs/README.md](./docs/README.md)。
+已经完成。M4“安排、随机与完成”已完成本地实现和验收，等待提交、远端 CI 与真实
+Firebase 环境验证后关闭。开发进度见 [PROGRESS.md](./PROGRESS.md)，产品和技术
+设计见 [docs/README.md](./docs/README.md)。
 
 ## 工程组成
 
@@ -77,7 +78,8 @@ npm run test:rules
 项目 `demo-nextlist`，不会连接生产 Firebase 资源。Functions 集成测试也会注入独立
 的测试密钥，不依赖本机文件。
 
-M3 想法封面使用系统 Photo Picker，不需要相册权限。客户端会修正 EXIF 方向、限制
-尺寸、重新编码为 WebP 并移除原始元数据；Storage Emulator 规则将封面限制为
-`groups/{groupId}/ideas/{ideaId}/cover/{fileId}.webp` 且不超过 2 MB。纯文本想法、
-表态和评论可进入 Firestore 离线队列，图片上传必须联网。
+想法封面和 M4 完成照片都使用系统 Photo Picker，不需要相册权限。客户端会修正
+EXIF 方向、限制尺寸、重新编码为 WebP 并移除原始元数据；Storage Emulator 规则将
+图片精确限制在各自的 `cover` 或 `completion` 路径且不超过 2 MB。纯文本想法、
+表态、评论和 RSVP 可进入 Firestore 离线队列；安排、随机候选读取、完成记录与
+图片上传需要联网。

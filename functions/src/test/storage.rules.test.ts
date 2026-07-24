@@ -179,7 +179,7 @@ test("non-members and removed members cannot access idea covers", async () => {
   await assertFails(getBytes(ref(removedStorage, path)));
 });
 
-test("idea covers reject invalid MIME names paths and oversized files", async () => {
+test("idea covers reject invalid MIME names and oversized files", async () => {
   const storage = testEnvironment.authenticatedContext("alice").storage();
   await assertFails(
     uploadString(
@@ -198,16 +198,51 @@ test("idea covers reject invalid MIME names paths and oversized files", async ()
     ),
   );
   await assertFails(
+    uploadBytes(
+      ref(storage, "groups/group-1/ideas/idea-1/cover/large.webp"),
+      new Uint8Array(2 * 1024 * 1024 + 1),
+      {contentType: "image/webp"},
+    ),
+  );
+});
+
+test("active members can upload and read a valid completion WebP", async () => {
+  const aliceStorage = testEnvironment.authenticatedContext("alice").storage();
+  const path = "groups/group-1/ideas/idea-1/completion/photo_1.webp";
+  await assertSucceeds(
+    uploadString(ref(aliceStorage, path), "processed-webp", "raw", {
+      contentType: "image/webp",
+    }),
+  );
+  const bobStorage = testEnvironment.authenticatedContext("bob").storage();
+  await assertSucceeds(getBytes(ref(bobStorage, path)));
+});
+
+test("completion photos enforce membership MIME path and two MB limit", async () => {
+  const aliceStorage = testEnvironment.authenticatedContext("alice").storage();
+  const charlieStorage = testEnvironment.authenticatedContext("charlie").storage();
+  const validPath = "groups/group-1/ideas/idea-1/completion/photo.webp";
+  await assertFails(
+    uploadString(ref(charlieStorage, validPath), "forged", "raw", {
+      contentType: "image/webp",
+    }),
+  );
+  await assertFails(
     uploadString(
-      ref(storage, "groups/group-1/ideas/idea-1/completion/photo.webp"),
+      ref(aliceStorage, "groups/group-1/ideas/idea-1/completion/photo.jpg"),
       "image",
       "raw",
       {contentType: "image/webp"},
     ),
   );
   await assertFails(
+    uploadString(ref(aliceStorage, validPath), "image", "raw", {
+      contentType: "image/jpeg",
+    }),
+  );
+  await assertFails(
     uploadBytes(
-      ref(storage, "groups/group-1/ideas/idea-1/cover/large.webp"),
+      ref(aliceStorage, validPath),
       new Uint8Array(2 * 1024 * 1024 + 1),
       {contentType: "image/webp"},
     ),

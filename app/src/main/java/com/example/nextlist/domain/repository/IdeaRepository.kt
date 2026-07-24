@@ -6,9 +6,13 @@ import com.example.nextlist.domain.model.IdeaCategory
 import com.example.nextlist.domain.model.IdeaComment
 import com.example.nextlist.domain.model.IdeaDraft
 import com.example.nextlist.domain.model.IdeaReaction
+import com.example.nextlist.domain.model.IdeaRsvp
 import com.example.nextlist.domain.model.IdeaStatus
+import com.example.nextlist.domain.model.CompletionDraft
 import com.example.nextlist.domain.model.ReactionValue
 import com.example.nextlist.domain.model.RealtimeItems
+import com.example.nextlist.domain.model.RsvpValue
+import com.example.nextlist.domain.model.ScheduleDraft
 import kotlinx.coroutines.flow.Flow
 
 interface IdeaRepository {
@@ -31,6 +35,11 @@ interface IdeaRepository {
         groupId: String,
         ideaId: String,
     ): Flow<AppResult<RealtimeItems<IdeaComment>>>
+
+    fun observeRsvps(
+        groupId: String,
+        ideaId: String,
+    ): Flow<AppResult<RealtimeItems<IdeaRsvp>>>
 
     suspend fun createIdea(
         groupId: String,
@@ -68,4 +77,34 @@ interface IdeaRepository {
         ideaId: String,
         commentId: String,
     ): AppResult<Unit>
+
+    suspend fun saveSchedule(
+        groupId: String,
+        ideaId: String,
+        draft: ScheduleDraft,
+    ): AppResult<Unit>
+
+    suspend fun setRsvp(
+        groupId: String,
+        ideaId: String,
+        value: RsvpValue,
+        scheduleRevision: Int,
+        isExisting: Boolean,
+    ): AppResult<Unit>
+
+    suspend fun clearRsvp(groupId: String, ideaId: String): AppResult<Unit>
+
+    suspend fun saveCompletion(
+        groupId: String,
+        ideaId: String,
+        draft: CompletionDraft,
+    ): AppResult<Unit>
+
+    suspend fun getIdeaFromServer(groupId: String, ideaId: String): AppResult<Idea>
+
+    suspend fun loadRandomCandidates(
+        groupId: String,
+        category: IdeaCategory?,
+        minimumWant: Int,
+    ): AppResult<List<Idea>>
 }

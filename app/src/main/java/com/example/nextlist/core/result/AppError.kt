@@ -14,6 +14,7 @@ enum class AppError {
     NOT_ADMIN,
     ADMIN_CANNOT_LEAVE,
     TARGET_NOT_MEMBER,
+    CONFLICT,
     VALIDATION,
     RATE_LIMITED,
     UNKNOWN,

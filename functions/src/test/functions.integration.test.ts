@@ -20,6 +20,18 @@ import {
   httpsCallable,
 } from "firebase/functions";
 import {
+  connectFirestoreEmulator,
+  deleteDoc,
+  doc,
+  Firestore,
+  getDoc,
+  getFirestore as getClientFirestore,
+  runTransaction,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+} from "firebase/firestore";
+import {
   App,
   deleteApp as deleteAdminApp,
   initializeApp as initializeAdminApp,
@@ -29,6 +41,7 @@ import {getFirestore, Timestamp} from "firebase-admin/firestore";
 import {
   maintainCommentCount,
   maintainReactionCounts,
+  maintainRsvpCounts,
 } from "../ideas/aggregates";
 
 const projectId = "demo-nextlist";
@@ -39,6 +52,7 @@ interface TestClient {
   app: FirebaseApp;
   auth: Auth;
   functions: Functions;
+  firestore: Firestore;
   uid: string;
 }
 
@@ -64,6 +78,8 @@ async function createClient(index: number, verified = true): Promise<TestClient>
   connectAuthEmulator(auth, "http://127.0.0.1:9099", {disableWarnings: true});
   const functions = getFunctions(app, "asia-east1");
   connectFunctionsEmulator(functions, "127.0.0.1", 5001);
+  const firestore = getClientFirestore(app);
+  connectFirestoreEmulator(firestore, "127.0.0.1", 8080);
   const email = `m2-user-${index}@example.com`;
   const credential = await createUserWithEmailAndPassword(
     auth,
@@ -91,7 +107,7 @@ async function createClient(index: number, verified = true): Promise<TestClient>
     updatedAt: new Date(),
     schemaVersion: 1,
   });
-  const client = {app, auth, functions, uid: credential.user.uid};
+  const client = {app, auth, functions, firestore, uid: credential.user.uid};
   clients.push(client);
   return client;
 }
@@ -132,6 +148,63 @@ async function waitFor(
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   assert.fail("Timed out waiting for the Emulator trigger");
+}
+
+async function scheduleWithExpectedRevision(
+  client: TestClient,
+  groupId: string,
+  ideaId: string,
+  expectedRevision: number,
+  startAt: Date,
+): Promise<void> {
+  const ideaReference = doc(
+    client.firestore,
+    `groups/${groupId}/ideas/${ideaId}`,
+  );
+  const memberReference = doc(
+    client.firestore,
+    `groups/${groupId}/members/${client.uid}`,
+  );
+  await runTransaction(client.firestore, async (transaction) => {
+    const [member, idea] = await Promise.all([
+      transaction.get(memberReference),
+      transaction.get(ideaReference),
+    ]);
+    const current = idea.get("schedule") as Record<string, unknown> | null;
+    const revision = typeof current?.revision === "number" ? current.revision : 0;
+    const status = idea.get("status");
+    if (
+      revision !== expectedRevision ||
+      (expectedRevision === 0 ? status !== "idea" : status !== "scheduled")
+    ) {
+      throw new Error("CONFLICT");
+    }
+    const profile = member.get("profileSnapshot");
+    const schedule = expectedRevision === 0 ? {
+      startAt,
+      timezone: "Asia/Shanghai",
+      meetingPoint: "地铁站",
+      note: null,
+      scheduledBy: client.uid,
+      schedulerSnapshot: profile,
+      scheduledAt: serverTimestamp(),
+      updatedBy: client.uid,
+      updatedAt: serverTimestamp(),
+      revision: 1,
+    } : {
+      ...current,
+      startAt,
+      updatedBy: client.uid,
+      updatedAt: serverTimestamp(),
+      revision: expectedRevision + 1,
+    };
+    transaction.update(ideaReference, {
+      status: "scheduled",
+      schedule,
+      lastModifiedBy: client.uid,
+      updatedAt: serverTimestamp(),
+    });
+  });
 }
 
 test("M2 callable transactions preserve membership and role invariants", async () => {
@@ -594,4 +667,247 @@ test("M3 triggers keep idea reaction and comment aggregates exact", async () => 
   const finalCounts = (await ideaRef.get()).get("reactionCounts");
   assert.deepEqual(finalCounts, {want: 0, ok: 1, notInterested: 0});
   assert.equal((await ideaRef.get()).get("commentCount"), 1);
+});
+
+test("M4 schedule RSVP completion transitions stay exact and create no feed", async () => {
+  const owner = await createClient(30);
+  const member = await createClient(31);
+  const created = await call<{groupId: string}>(owner, "createGroup", {
+    name: "M4 核心链路",
+    requestId: "m4-create-group-request",
+  });
+  const invite = await call<{token: string}>(
+    owner,
+    "getOrCreateInvite",
+    {groupId: created.groupId},
+  );
+  await call(member, "acceptInvite", {kind: "token", value: invite.token});
+
+  const database = getFirestore(adminApp);
+  const groupRef = database.collection("groups").doc(created.groupId);
+  const ideaRef = groupRef.collection("ideas").doc("m4-idea-1");
+  const ownerSnapshot = {nickname: "成员30", avatarPath: null};
+  const memberSnapshot = {nickname: "成员31", avatarPath: null};
+  const now = Timestamp.now();
+  await ideaRef.set({
+    groupId: created.groupId,
+    title: "去看日落",
+    category: "activity",
+    note: null,
+    media: null,
+    locationOrLink: null,
+    createdBy: owner.uid,
+    creatorSnapshot: ownerSnapshot,
+    status: "idea",
+    schedule: null,
+    completion: null,
+    reactionCounts: {want: 0, ok: 0, notInterested: 0},
+    rsvpCounts: {going: 0, maybe: 0, notGoing: 0},
+    commentCount: 0,
+    reminderClaimedAt: null,
+    reminderSentAt: null,
+    reminderSkippedReason: null,
+    lastModifiedBy: owner.uid,
+    createdAt: now,
+    updatedAt: now,
+    isDeleted: false,
+    deletedAt: null,
+    deletedBy: null,
+    schemaVersion: 1,
+  });
+  await waitFor(async () => (await groupRef.get()).get("ideaCount") === 1);
+
+  const simultaneousSchedule = await Promise.allSettled([
+    scheduleWithExpectedRevision(
+      owner,
+      created.groupId,
+      ideaRef.id,
+      0,
+      new Date("2026-07-27T10:00:00Z"),
+    ),
+    scheduleWithExpectedRevision(
+      member,
+      created.groupId,
+      ideaRef.id,
+      0,
+      new Date("2026-07-27T11:00:00Z"),
+    ),
+  ]);
+  assert.equal(
+    simultaneousSchedule.filter((result) => result.status === "fulfilled").length,
+    1,
+  );
+  assert.equal(
+    simultaneousSchedule.filter((result) => result.status === "rejected").length,
+    1,
+  );
+  await waitFor(async () => {
+    const group = await groupRef.get();
+    return group.get("ideaCount") === 0 && group.get("scheduledCount") === 1;
+  });
+  assert.equal((await ideaRef.get()).get("schedule.revision"), 1);
+
+  await scheduleWithExpectedRevision(
+    member,
+    created.groupId,
+    ideaRef.id,
+    1,
+    new Date("2026-07-28T10:00:00Z"),
+  );
+  await assert.rejects(
+    scheduleWithExpectedRevision(
+      owner,
+      created.groupId,
+      ideaRef.id,
+      1,
+      new Date("2026-07-29T10:00:00Z"),
+    ),
+    /CONFLICT/,
+  );
+  assert.equal((await ideaRef.get()).get("schedule.revision"), 2);
+
+  const ownerRsvp = doc(
+    owner.firestore,
+    `groups/${created.groupId}/ideas/${ideaRef.id}/rsvps/${owner.uid}`,
+  );
+  const memberRsvp = doc(
+    member.firestore,
+    `groups/${created.groupId}/ideas/${ideaRef.id}/rsvps/${member.uid}`,
+  );
+  await Promise.all([
+    setDoc(ownerRsvp, {
+      groupId: created.groupId,
+      ideaId: ideaRef.id,
+      userId: owner.uid,
+      value: "going",
+      scheduleRevision: 2,
+      userSnapshot: ownerSnapshot,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    }),
+    setDoc(memberRsvp, {
+      groupId: created.groupId,
+      ideaId: ideaRef.id,
+      userId: member.uid,
+      value: "maybe",
+      scheduleRevision: 2,
+      userSnapshot: memberSnapshot,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    }),
+  ]);
+  await waitFor(async () => {
+    const counts = (await ideaRef.get()).get("rsvpCounts");
+    return counts?.going === 1 && counts?.maybe === 1 && counts?.notGoing === 0;
+  });
+  await Promise.all([
+    updateDoc(ownerRsvp, {
+      value: "not_going",
+      updatedAt: serverTimestamp(),
+    }),
+    deleteDoc(memberRsvp),
+  ]);
+  await waitFor(async () => {
+    const counts = (await ideaRef.get()).get("rsvpCounts");
+    return counts?.going === 0 && counts?.maybe === 0 && counts?.notGoing === 1;
+  });
+
+  const duplicateRsvpEvent = {
+    id: "m4-duplicate-rsvp-event",
+    params: {
+      groupId: created.groupId,
+      ideaId: ideaRef.id,
+      uid: owner.uid,
+    },
+  } as unknown as Parameters<typeof maintainRsvpCounts>[0];
+  await Promise.all([
+    maintainRsvpCounts(duplicateRsvpEvent),
+    maintainRsvpCounts(duplicateRsvpEvent),
+  ]);
+  assert.deepEqual(
+    (await ideaRef.get()).get("rsvpCounts"),
+    {going: 0, maybe: 0, notGoing: 1},
+  );
+
+  await setDoc(memberRsvp, {
+    groupId: created.groupId,
+    ideaId: ideaRef.id,
+    userId: member.uid,
+    value: "going",
+    scheduleRevision: 2,
+    userSnapshot: memberSnapshot,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    schemaVersion: 1,
+  });
+  await waitFor(async () => (await ideaRef.get()).get("rsvpCounts.going") === 1);
+  await scheduleWithExpectedRevision(
+    owner,
+    created.groupId,
+    ideaRef.id,
+    2,
+    new Date("2026-07-30T10:00:00Z"),
+  );
+  assert.equal((await getDoc(memberRsvp)).get("scheduleRevision"), 2);
+  assert.equal((await ideaRef.get()).get("schedule.revision"), 3);
+
+  await call(owner, "removeMember", {
+    groupId: created.groupId,
+    userId: member.uid,
+  });
+  await waitFor(async () => !(await ideaRef.collection("rsvps").doc(member.uid).get()).exists);
+  await waitFor(async () => {
+    const counts = (await ideaRef.get()).get("rsvpCounts");
+    return counts?.going === 0 && counts?.maybe === 0 && counts?.notGoing === 1;
+  });
+
+  const ownerIdea = doc(
+    owner.firestore,
+    `groups/${created.groupId}/ideas/${ideaRef.id}`,
+  );
+  await updateDoc(ownerIdea, {
+    status: "completed",
+    completion: {
+      completedOn: "2026-07-30",
+      timezone: "Asia/Shanghai",
+      photo: null,
+      review: "值得再去",
+      rating: 5,
+      completedBy: owner.uid,
+      completerSnapshot: ownerSnapshot,
+      completedAt: serverTimestamp(),
+      updatedBy: owner.uid,
+      updatedAt: serverTimestamp(),
+    },
+    lastModifiedBy: owner.uid,
+    updatedAt: serverTimestamp(),
+  });
+  await waitFor(async () => {
+    const group = await groupRef.get();
+    return group.get("scheduledCount") === 0 && group.get("completedCount") === 1;
+  });
+  const completion = (await getDoc(ownerIdea)).get("completion");
+  await updateDoc(ownerIdea, {
+    completion: {
+      ...completion,
+      review: "修正后的评价",
+      rating: 4,
+      updatedBy: owner.uid,
+      updatedAt: serverTimestamp(),
+    },
+    lastModifiedBy: owner.uid,
+    updatedAt: serverTimestamp(),
+  });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.equal((await groupRef.get()).get("scheduledCount"), 0);
+  assert.equal((await groupRef.get()).get("completedCount"), 1);
+
+  const [ownerFeed, memberFeed] = await Promise.all([
+    database.collection("users").doc(owner.uid).collection("feed").get(),
+    database.collection("users").doc(member.uid).collection("feed").get(),
+  ]);
+  assert.equal(ownerFeed.size, 0);
+  assert.equal(memberFeed.size, 0);
 });
