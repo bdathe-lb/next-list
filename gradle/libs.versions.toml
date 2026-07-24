@@ -42,6 +42,7 @@ compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
 firebase-auth = { module = "com.google.firebase:firebase-auth" }
+firebase-appcheck-playintegrity = { module = "com.google.firebase:firebase-appcheck-playintegrity" }
 firebase-firestore = { module = "com.google.firebase:firebase-firestore" }
 firebase-functions = { module = "com.google.firebase:firebase-functions" }
 firebase-messaging = { module = "com.google.firebase:firebase-messaging" }

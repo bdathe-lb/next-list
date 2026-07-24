@@ -6,7 +6,8 @@
   },
   "scripts": {
     "emulators": "firebase emulators:start --project demo-nextlist",
-    "test:rules": "firebase emulators:exec --project demo-nextlist --only firestore,storage \"npm --prefix functions run test:rules\""
+    "test:rules": "firebase emulators:exec --project demo-nextlist --only firestore,storage \"npm --prefix functions run test:rules\"",
+    "test:functions:integration": "npm --prefix functions run build && NEXTLIST_INVITE_SECRET=nextlist-emulator-only-secret-do-not-use-in-production firebase emulators:exec --project demo-nextlist --only auth,firestore,functions \"node --test --test-concurrency=1 functions/lib/test/functions.integration.test.js\""
   },
   "devDependencies": {
     "firebase-tools": "15.24.0"

@@ -60,5 +60,8 @@ jobs:
       - name: Check Functions
         run: npm --prefix functions run check
 
+      - name: Test Functions transactions
+        run: npm run test:functions:integration
+
       - name: Test Firebase Rules
         run: npm run test:rules

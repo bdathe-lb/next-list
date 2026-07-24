@@ -8,6 +8,7 @@ import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.functions.FirebaseFunctionsException
 import com.google.firebase.storage.StorageException
 import java.io.IOException
 
@@ -19,6 +20,24 @@ internal fun Throwable.toAppError(): AppError = when (this) {
     is FirebaseAuthWeakPasswordException -> AppError.VALIDATION
     is FirebaseTooManyRequestsException -> AppError.RATE_LIMITED
     is FirebaseNetworkException -> AppError.NETWORK_UNAVAILABLE
+    is FirebaseFunctionsException -> {
+        val businessCode = (details as? Map<*, *>)?.get("code") as? String
+        businessCodeToAppError(businessCode) ?: when (code) {
+                FirebaseFunctionsException.Code.UNAUTHENTICATED ->
+                    AppError.UNAUTHENTICATED
+                FirebaseFunctionsException.Code.PERMISSION_DENIED ->
+                    AppError.PERMISSION_DENIED
+                FirebaseFunctionsException.Code.NOT_FOUND ->
+                    AppError.NOT_FOUND
+                FirebaseFunctionsException.Code.RESOURCE_EXHAUSTED ->
+                    AppError.RATE_LIMITED
+                FirebaseFunctionsException.Code.UNAVAILABLE,
+                FirebaseFunctionsException.Code.DEADLINE_EXCEEDED,
+                FirebaseFunctionsException.Code.CANCELLED,
+                -> AppError.NETWORK_UNAVAILABLE
+                else -> AppError.UNKNOWN
+            }
+    }
     is FirebaseFirestoreException -> when (code) {
         FirebaseFirestoreException.Code.UNAUTHENTICATED -> AppError.UNAUTHENTICATED
         FirebaseFirestoreException.Code.PERMISSION_DENIED -> AppError.PERMISSION_DENIED
@@ -41,4 +60,20 @@ internal fun Throwable.toAppError(): AppError = when (this) {
     }
     is IOException -> AppError.NETWORK_UNAVAILABLE
     else -> AppError.UNKNOWN
+}
+
+internal fun businessCodeToAppError(code: String?): AppError? = when (code) {
+    "UNAUTHENTICATED" -> AppError.UNAUTHENTICATED
+    "EMAIL_NOT_VERIFIED" -> AppError.EMAIL_NOT_VERIFIED
+    "VALIDATION" -> AppError.VALIDATION
+    "NOT_FOUND" -> AppError.NOT_FOUND
+    "NOT_ADMIN", "PERMISSION_DENIED" -> AppError.NOT_ADMIN
+    "GROUP_DISSOLVED" -> AppError.GROUP_DISSOLVED
+    "GROUP_FULL" -> AppError.GROUP_FULL
+    "INVITE_INVALID" -> AppError.INVITE_INVALID
+    "INVITE_EXPIRED" -> AppError.INVITE_EXPIRED
+    "ADMIN_CANNOT_LEAVE" -> AppError.ADMIN_CANNOT_LEAVE
+    "TARGET_NOT_MEMBER" -> AppError.TARGET_NOT_MEMBER
+    "RATE_LIMITED" -> AppError.RATE_LIMITED
+    else -> null
 }

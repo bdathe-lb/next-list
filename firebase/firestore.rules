@@ -26,6 +26,11 @@ service cloud.firestore {
         && get(memberPath(groupId, request.auth.uid)).data.status == "active";
     }
 
+    function isOwnMembership() {
+      return signedIn()
+        && resource.data.userId == request.auth.uid;
+    }
+
     function validNickname(value) {
       return value is string && value.size() >= 2 && value.size() <= 20;
     }
@@ -141,7 +146,9 @@ service cloud.firestore {
             "status",
             "respondedAt"
           ])
-          && request.resource.data.status in ["declined"];
+          && resource.data.status == "pending"
+          && request.resource.data.status == "declined"
+          && request.resource.data.respondedAt == request.time;
         allow create, delete: if false;
       }
     }
@@ -151,7 +158,7 @@ service cloud.firestore {
       allow write: if false;
 
       match /members/{uid} {
-        allow read: if isOwner(uid) || isActiveMember(groupId);
+        allow read: if isOwnMembership() || isActiveMember(groupId);
         allow write: if false;
       }
 
@@ -172,6 +179,11 @@ service cloud.firestore {
 
     match /functionEvents/{eventId} {
       allow read, write: if false;
+    }
+
+    match /{path=**}/members/{uid} {
+      allow read: if isOwnMembership();
+      allow write: if false;
     }
 
     match /{document=**} {

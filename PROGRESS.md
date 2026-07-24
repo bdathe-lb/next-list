@@ -4,114 +4,113 @@
 
 ## 当前阶段
 
-**M1：账号与资料（已完成）**
+**M2：小组与邀请（本地验收完成，等待远端 CI）**
 
-M0“项目骨架”已关闭。M1 的实现、Android 单元测试、Compose 设备测试、
-Firebase Rules 测试以及 Pixel_9_Pro API 37 Emulator 烟测均已完成。
-下一阶段为 M2“小组与邀请”。
+M0“项目骨架”和 M1“账号与资料”已关闭。M2 的 Android 实现、Functions 事务、
+Security Rules、单元/集成/设备测试以及两台独立 Pixel_9_Pro API 37 Emulator
+烟测均已完成；待 GitHub Actions 的 Android 与 Functions and Firebase Rules
+两个 Job 通过后正式关闭。
 
-## M1 已完成
+## M2 已完成
 
-### 账号
+### 小组与成员
 
-- [x] 邮箱注册，包含昵称、邮箱、密码与确认密码校验。
-- [x] 邮箱密码登录及安全的中文错误文案。
-- [x] Firebase 登录状态恢复与根级登录态路由。
-- [x] 首次注册后进入可恢复的资料完善流程。
-- [x] 邮箱验证状态展示、状态刷新与验证邮件重新发送。
-- [x] 忘记密码与重置邮件发送，使用不泄露邮箱注册状态的统一成功文案。
-- [x] 退出登录并清除受保护页面。
-- [x] 提交期间立即禁用操作，避免按钮连点和重复提交。
+- [x] 创建小组并原子创建唯一管理员成员记录；名称按 2～30 个 Unicode 字符校验。
+- [x] “我的小组”实时列表、空状态、成员头像、成员数、想法数和已安排数。
+- [x] 小组详情与成员列表；M3/M4 能力显示安全占位，不允许提前写业务数据。
+- [x] 管理员重命名、移除成员、转让管理员和解散小组。
+- [x] 普通成员退出；管理员必须先转让或解散，不能直接退出。
+- [x] 成员上限固定为 10，加入并发由 Firestore 事务串行校验。
+- [x] 成员被移除、退出或小组解散后，详情监听立即失权并返回小组列表。
+- [x] 用户昵称或头像变化由 Functions 触发器同步到所有活跃成员快照。
 
-### 用户资料
+### 邀请
 
-- [x] 按数据字典写入 `users/{uid}`，包含昵称、头像路径、验证状态、
-  默认通知偏好、状态、服务端时间与 `schemaVersion`。
-- [x] 昵称按 2～20 个 Unicode 字符校验并去除首尾空格。
-- [x] 未上传头像时使用昵称首字符生成默认头像。
-- [x] 使用系统 Photo Picker 选择头像，不申请全量相册权限。
-- [x] 客户端读取 EXIF 方向、缩放长边、重新编码 WebP 并去除原始元数据，
-  输出目标不超过 2 MB。
-- [x] 头像上传至 `users/{uid}/avatar/{fileId}.webp`，Firestore 只保存
-  Storage path。
-- [x] 支持查看、修改和移除昵称/头像；替换成功后清理旧头像对象。
+- [x] 管理员获取同一有效邀请、主动轮换邀请，并立即撤销旧凭证。
+- [x] 通用邀请同时提供不可枚举链接 token 和 8 位短码；短码排除易混字符。
+- [x] Firestore 只保存 token/code 的 SHA-256 摘要、密钥版本和状态，不保存明文。
+- [x] 邀请明文由 HMAC 密钥和不可预测邀请 ID 派生；密钥使用 Functions Secret。
+- [x] 链接、短码和定向邀请先预览小组，再由用户明确确认加入。
+- [x] Android App Link、自定义 scheme 和 DataStore 待处理邀请恢复。
+- [x] 定向邀请按已注册邮箱查找，但响应始终统一，不泄露邮箱是否注册。
+- [x] 定向邀请仅写入目标用户私有子集合，客户端可接受或拒绝。
+- [x] 邀请默认 7 天有效；无效短码按用户/实例限流并返回安全中文文案。
 
-### 架构与错误处理
+### 架构、安全与容错
 
-- [x] Compose 页面只消费不可变 `UiState`，不直接调用 Firebase SDK。
-- [x] Auth、Firestore 与 Storage 调用位于 data 层，并通过 repository/use case
-  暴露给 ViewModel。
-- [x] Firebase Auth 状态与 `users/{uid}` 文档共同决定
-  “登录 / 完善资料 / 主界面”路由。
-- [x] Firebase 异常统一转换为有限 `AppError` 和中文文案，不展示错误码、
-  异常正文或堆栈。
-- [x] 加载、失败、重试、局部提交与网络错误状态均有明确界面反馈。
-- [x] Debug 继续使用 `10.0.2.2` Emulator；Release 的 Emulator 开关保持关闭。
-- [x] 缺少 `google-services.json` 时仍可构建，并在账号页安全禁用提交。
+- [x] 所有小组业务写入都通过 Cloud Functions v2；客户端对小组、成员和通用邀请
+  文档无直接写权限。
+- [x] 生产 callable 强制 App Check；Release 使用 Play Integrity，Emulator
+  明确绕过强制并只在 Debug 允许本地明文地址。
+- [x] 创建和轮换使用 request ID；加入、退出、移除、转让和解散均可安全重试。
+- [x] 事务保持 `group.adminId` 与唯一活跃 `admin` 成员一致，并原子维护成员数。
+- [x] 业务错误码统一映射为有限 `AppError` 和中文文案，不向界面暴露异常正文。
+- [x] 提交期间禁用操作，危险操作包含二次确认，解散必须输入小组名称。
+- [x] Firestore collection-group 索引支持按用户查询活跃小组。
 
 ### Security Rules
 
-- [x] Firestore 用户资料仅本人可读写。
-- [x] 用户文档严格校验字段集合、类型、昵称、头像路径、默认结构、
-  `schemaVersion` 和服务端时间。
-- [x] `emailVerified` 创建/更新值必须与 Auth token 声明一致。
-- [x] 不允许客户端修改用户状态、创建时间或写入邮箱等数据字典外字段。
-- [x] Storage 头像仅本人可写/删，未登录访问被拒绝。
-- [x] 头像只接受安全文件名、`image/webp` 且小于 10 MB；其他路径、
-  类型和超限对象被拒绝。
+- [x] 活跃成员可读小组与成员；非成员、已退出/移除成员和解散后成员不可读小组。
+- [x] 用户可读取自己的成员记录，以支持 collection-group 实时查询和失权移除。
+- [x] 通用邀请与 Functions 幂等事件集合完全禁止客户端读写。
+- [x] 定向邀请仅目标用户可读；客户端只允许把自己的 `pending` 邀请改为
+  `declined` 并使用服务端时间。
+- [x] M1 用户资料和 Storage 保护规则保持不变。
 
 ## 验证记录
 
 | 检查 | 状态 | 结果 |
 | --- | --- | --- |
-| Android 单元测试 | 通过 | 14/14，校验、错误文案、登录态路由和防重复提交 |
-| Android Lint | 通过 | 0 errors；仅保留既有 SDK/依赖版本提示 |
-| Debug APK | 通过 | `assembleDebug`，约 20 MB |
-| Compose / Android 设备测试 | 通过 | 3/3，Pixel_9_Pro API 37 |
+| Android 单元测试 | 通过 | 23/23，校验、DTO、错误映射、加载/错误状态和防重复提交 |
+| Android Lint | 通过 | 0 errors；仅保留依赖版本提示 |
+| Debug APK | 通过 | `assembleDebug`，约 19 MB |
+| Compose / Android 设备测试 | 通过 | 6/6，在两台 Pixel_9_Pro API 37 上各执行一次 |
 | Functions lint/typecheck | 通过 | ESLint + TypeScript |
-| Functions 单元测试 | 通过 | 1/1 |
-| Firestore / Storage Rules | 通过 | 15/15 allow/deny 用例 |
-| API 37 M1 设备烟测 | 通过 | 注册、资料、头像、恢复、编辑、验证、重置、退出与重新登录 |
+| Functions 单元测试 | 通过 | 6/6，邀请加密、输入校验和限流 |
+| Functions Emulator 集成 | 通过 | 12 个账号覆盖事务、并发、幂等、权限和竞态 |
+| Firestore / Storage Rules | 通过 | 25/25 allow/deny 用例 |
+| API 37 M2 双设备烟测 | 通过 | 创建、邀请预览、加入、实时 2 人、移除与失权自动返回 |
 
 ### API 37 烟测明细
 
-设备：`Pixel_9_Pro`，API 37；后端：`demo-nextlist` Firebase Emulator。
+设备：两台独立 `Pixel_9_Pro`，API 37；后端：`demo-nextlist` Firebase Emulator。
 
-- 未登录冷启动进入登录页。
-- Emulator 邮箱账号注册成功，随后进入资料完善页。
-- 昵称保存到正确的 `users/{uid}` 文档。
-- 头像成功压缩为 `image/webp`（本次 32,850 bytes），上传到
-  `users/{uid}/avatar/{UUID}.webp`，文档保存相同 `avatarPath`。
-- 强制停止并冷启动后恢复登录状态，直接进入空的小组列表。
-- “我的”页面正确显示邮箱、昵称、头像和未验证状态。
-- 昵称修改为 `SmokeUser2`、头像上传和远端展示均成功。
-- 验证邮件重新发送成功；通过 Auth Emulator 标记验证后，客户端刷新为
-  “邮箱已验证”，Firestore `emailVerified` 同步为 `true`。
-- 忘记密码请求成功并显示统一文案。
-- 退出后返回登录页；使用同一邮箱密码重新登录并恢复资料。
-- 设备烟测发现并修正了 bounds-only 图片解码返回 `null` 被误判为文件不可读
-  的问题，随后新增内容 URI 图片处理设备回归并通过。
+- 两个已验证账号分别显示 M2 要求的空小组状态。
+- 管理员创建 `M2SmokeGroup` 后进入详情页并显示 1 位成员。
+- 邀请页生成 8 位短码和遮蔽后的分享链接，未在日志中输出完整 token。
+- 第二台设备输入短码后先看到小组预览，确认加入后两端实时显示 2 位成员。
+- 管理员成员页正确显示管理员/成员角色，以及转让和移除动作。
+- 管理员确认移除后，第二台设备的详情监听收到 `PERMISSION_DENIED`，立即返回空
+  小组页并显示“你已不在这个小组中”。
+- 本轮烟测发现并修正了 Debug 本地 Functions 明文访问策略，以及示例
+  `google-services.json` 占位 API key 格式不合法的问题；Release 安全策略未放宽。
 
-## M0 基线
+## M1 与 M0 基线
 
+- [x] 邮箱注册、登录、验证、重置密码、退出和登录状态恢复。
+- [x] 用户昵称、默认头像、Photo Picker、WebP 压缩、上传、修改和移除。
+- [x] 用户资料与 Storage 的本人权限、字段形状、类型、时间和文件约束。
 - [x] Kotlin、Jetpack Compose、Material 3、Hilt 与单 Activity 架构。
 - [x] Firebase Auth、Firestore、Functions、Storage、Messaging SDK 与 Emulator。
 - [x] Android / Functions / Rules CI 检查链。
-- [x] `main` 的 M0 关闭提交为 `daaf13f chore: close M0`。
 
-此前远端 CI 记录：[CI #30066326401](https://github.com/bdathe-lb/next-list/actions/runs/30066326401)。
-M1 远端 CI 记录：[CI #30070567072](https://github.com/bdathe-lb/next-list/actions/runs/30070567072)；
+M0 关闭提交：`daaf13f chore: close M0`。
+M1 远端 CI：[CI #30070567072](https://github.com/bdathe-lb/next-list/actions/runs/30070567072)，
 提交 `cd71306` 的 Android 与 Functions and Firebase Rules 两个 Job 均通过。
 
 ## 当前限制与外部配置
 
 - 本地使用仓库提供的示例配置和 `demo-nextlist` Emulator 完成开发与验收。
 - 尚未创建或接入真实 Firebase 开发/生产项目；真实 `google-services.json`、
-  邮件发件模板/域名和生产 Rules smoke test 仍是外部配置事项。
-- App Check 强制执行、生产监控、隐私政策和账号注销按 M6 发布加固计划处理。
-- M1 未实现好友、聊天、小组、想法、动态或通知业务。
+  `NEXTLIST_INVITE_SECRET`、Play Integrity 注册和生产 Rules/App Check smoke test
+  仍是外部配置事项。
+- 邮件发件模板/域名、动态链接落地页、生产监控、隐私政策和账号注销按后续发布
+  加固计划处理。
+- M2 未实现想法 CRUD、状态流转、动态或通知投递；界面仅展示 M3/M4 安全占位。
 
 ## 下一步
 
-1. 如具备真实 Firebase 项目，按 Debug/Release 包名接入本地配置并验证邮件模板。
-2. 进入 M2“小组与邀请”，实现创建、成员、邀请码与角色权限。
+1. 推送 M2 实现并等待 GitHub Actions 两个 Job 通过，随后正式关闭 M2。
+2. 进入 M3“想法清单”，实现小组内想法 CRUD、分类、投票和权限规则。
+3. 如具备真实 Firebase 项目，配置生产密钥与 Play Integrity，并执行生产预发布
+   App Check / Rules smoke test。

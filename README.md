@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-M0“项目骨架”和 M1“账号与资料”已经完成。开发进度见
+M0“项目骨架”、M1“账号与资料”和 M2“小组与邀请”已经完成。开发进度见
 [PROGRESS.md](./PROGRESS.md)，产品和技术设计见 [docs/README.md](./docs/README.md)。
 
 ## 工程组成
@@ -46,7 +46,7 @@ cp app/google-services.json.example app/google-services.json
 
 没有 `google-services.json` 时应用仍可安全构建，账号页会说明 Firebase 尚未配置并
 禁用提交。存在配置时，Debug 构建默认连接本地 Emulator；Release 构建不会连接
-Emulator。
+Emulator，并使用 Play Integrity App Check。
 
 ## Firebase Emulator
 
@@ -55,6 +55,7 @@ Emulator。
 ```bash
 npm install
 npm --prefix functions install
+cp functions/.secret.local.example functions/.secret.local
 ```
 
 启动 Auth、Firestore、Functions 和 Storage Emulator：
@@ -67,7 +68,10 @@ npm run emulators
 
 ```bash
 npm --prefix functions run check
+npm run test:functions:integration
 npm run test:rules
 ```
 
-Emulator 使用本地演示项目 `demo-nextlist`，不会连接生产 Firebase 资源。
+`.secret.local` 只保存本地邀请凭证派生密钥并已被 Git 忽略。Emulator 使用本地演示
+项目 `demo-nextlist`，不会连接生产 Firebase 资源。Functions 集成测试也会注入独立
+的测试密钥，不依赖本机文件。

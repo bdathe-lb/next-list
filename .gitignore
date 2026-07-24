@@ -36,3 +36,6 @@ service-account*.json
 .env
 .env.*
 !.env.example
+functions/.secret.local
+functions/.env.local
+!functions/.secret.local.example

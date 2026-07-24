@@ -30,6 +30,7 @@ android {
 
         buildConfigField("boolean", "FIREBASE_CONFIGURED", firebaseConfigured.toString())
         buildConfigField("String", "FIREBASE_FUNCTIONS_REGION", "\"asia-east1\"")
+        manifestPlaceholders["usesCleartextTraffic"] = "false"
     }
 
     buildTypes {
@@ -42,6 +43,7 @@ android {
                 "FIREBASE_EMULATOR_HOST",
                 "\"${providers.gradleProperty("nextlist.emulatorHost").getOrElse("10.0.2.2")}\"",
             )
+            manifestPlaceholders["usesCleartextTraffic"] = "true"
         }
         release {
             isMinifyEnabled = false
@@ -100,6 +102,7 @@ dependencies {
     debugImplementation(libs.compose.ui.tooling)
 
     implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.appcheck.playintegrity)
     implementation(libs.firebase.auth)
     implementation(libs.firebase.firestore)
     implementation(libs.firebase.functions)

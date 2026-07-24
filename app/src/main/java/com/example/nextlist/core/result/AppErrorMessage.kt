@@ -29,7 +29,13 @@ fun AppError.toUserMessage(operation: AppOperation = AppOperation.GENERAL): Stri
         "内容已经存在"
     }
     AppError.GROUP_FULL -> "小组成员已满"
+    AppError.GROUP_DISSOLVED -> "小组已解散，无法继续访问"
+    AppError.INVITE_INVALID -> "邀请无效，请检查后重试"
     AppError.INVITE_EXPIRED -> "邀请已失效或过期"
+    AppError.EMAIL_NOT_VERIFIED -> "请先验证邮箱，再创建或加入小组"
+    AppError.NOT_ADMIN -> "只有小组管理员可以完成此操作"
+    AppError.ADMIN_CANNOT_LEAVE -> "管理员需要先转让管理员身份，或解散小组"
+    AppError.TARGET_NOT_MEMBER -> "该成员已不在小组中"
     AppError.VALIDATION -> when (operation) {
         AppOperation.AVATAR_UPLOAD -> "头像文件无效，请重新选择图片"
         AppOperation.REGISTER -> "请检查注册信息后重试"
