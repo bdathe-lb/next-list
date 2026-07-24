@@ -100,7 +100,8 @@ Firebase Rules 测试以及 Pixel_9_Pro API 37 Emulator 烟测均已完成。
 - [x] `main` 的 M0 关闭提交为 `daaf13f chore: close M0`。
 
 此前远端 CI 记录：[CI #30066326401](https://github.com/bdathe-lb/next-list/actions/runs/30066326401)。
-M1 本地验收结果见上表；远端复验由 GitHub Actions 的 M1 收尾提交运行记录提供。
+M1 远端 CI 记录：[CI #30070567072](https://github.com/bdathe-lb/next-list/actions/runs/30070567072)；
+提交 `cd71306` 的 Android 与 Functions and Firebase Rules 两个 Job 均通过。
 
 ## 当前限制与外部配置
 
