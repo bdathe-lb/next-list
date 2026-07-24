@@ -8,6 +8,7 @@ import com.example.nextlist.core.result.toUserMessage
 import com.example.nextlist.domain.model.AccountSession
 import com.example.nextlist.domain.repository.AuthRepository
 import com.example.nextlist.domain.repository.AvatarRepository
+import com.example.nextlist.domain.repository.DeviceRepository
 import com.example.nextlist.domain.repository.UserProfileRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 data class ProfileUiState(
     val avatarUrl: String? = null,
@@ -31,6 +33,7 @@ class ProfileViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val userProfileRepository: UserProfileRepository,
     private val avatarRepository: AvatarRepository,
+    private val deviceRepository: DeviceRepository,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(ProfileUiState())
     val uiState: StateFlow<ProfileUiState> = mutableState.asStateFlow()
@@ -129,6 +132,11 @@ class ProfileViewModel @Inject constructor(
         if (mutableState.value.isSigningOut) return
         mutableState.update { it.copy(isSigningOut = true, message = null) }
         viewModelScope.launch {
+            // Token cleanup is best-effort. A stale or offline device must never
+            // trap the user in the signed-in state.
+            withTimeoutOrNull(1_500) {
+                deviceRepository.unregisterCurrentDevice()
+            }
             val result = authRepository.signOut()
             if (result is AppResult.Failure) {
                 mutableState.update {

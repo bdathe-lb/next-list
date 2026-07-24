@@ -647,7 +647,15 @@ Firestore Trigger、Callable Function 和定时函数共同处理：
 
 “新想法”和“完成”虽然进入动态，但不发送推送，符合低噪音原则。
 
-首次安排或开始时间变化时，服务端触发器同时初始化或重置 `reminderClaimedAt/reminderSentAt/reminderSkippedReason`；若新开始时间距当前不足 30 分钟则写入 `too_late`。客户端不能修改这三个字段。
+首次安排或开始时间变化时，服务端触发器同时初始化或重置 `reminderClaimedAt/reminderSentAt/reminderSkippedReason`；若新开始时间距本次安排实际保存的 `schedule.updatedAt` 不足 30 分钟则写入 `too_late`，避免触发器启动延迟造成误判。客户端不能修改这三个字段。
+
+M5 实现使用 CloudEvent ID、事件类型和收件人 uid 的摘要作为 Feed ID。推送再按
+事件与安装设备建立带 10 分钟租约的投递记录：成功设备不重发，临时失败设备可
+重试，`unregistered/invalid` token 会删除对应 device 文档。原业务写入不等待
+动态或推送成功，也不会因通知失败回滚。
+
+发送端每个用户只读取最近更新的 20 台 Android 设备，并按最多 500 条消息分批
+顺序调用 FCM；小组成员上限与设备上限共同约束一次事件的事务和发送并发。
 
 ### 13.2 FCM token
 
@@ -693,6 +701,11 @@ FCM data payload 使用有限类型：
 - 未知类型：安全忽略并进入应用首页。
 
 不信任 payload 中的标题或权限信息，详情始终从 Firestore 读取。
+
+Android 使用 DataStore 保存尚未消费的通知目标和最近已消费 message ID。冷启动、
+后台点击或未登录场景都走同一路由；登录后只消费一次。前台 data message 也由
+`FirebaseMessagingService` 生成本地系统通知，文案只按受限类型生成，不读取或
+展示评论正文。
 
 ## 14. 随机决定
 

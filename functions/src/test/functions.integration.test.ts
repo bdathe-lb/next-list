@@ -43,8 +43,15 @@ import {
   maintainReactionCounts,
   maintainRsvpCounts,
 } from "../ideas/aggregates";
+import {
+  deliverPush,
+  PushRequest,
+  PushResult,
+} from "../notifications/service";
+import {sendUpcomingReminders} from "../notifications/reminders";
 
 const projectId = "demo-nextlist";
+const testRunId = Date.now().toString(36);
 const clients: TestClient[] = [];
 let adminApp: App;
 
@@ -80,7 +87,7 @@ async function createClient(index: number, verified = true): Promise<TestClient>
   connectFunctionsEmulator(functions, "127.0.0.1", 5001);
   const firestore = getClientFirestore(app);
   connectFirestoreEmulator(firestore, "127.0.0.1", 8080);
-  const email = `m2-user-${index}@example.com`;
+  const email = `m2-user-${index}-${testRunId}@example.com`;
   const credential = await createUserWithEmailAndPassword(
     auth,
     email,
@@ -335,7 +342,7 @@ test("M2 callable transactions preserve membership and role invariants", async (
     "ADMIN_CANNOT_LEAVE",
   );
 
-  const targetEmail = "m2-user-3@example.com";
+  const targetEmail = `m2-user-3-${testRunId}@example.com`;
   assert.deepEqual(
     await call(owner, "sendDirectInvite", {
       groupId: created.groupId,
@@ -358,6 +365,27 @@ test("M2 callable transactions preserve membership and role invariants", async (
   const directData = directInvitations.docs[0].data();
   assert.equal(directData.groupId, created.groupId);
   assert.equal("email" in directData, false);
+  await waitFor(async () => {
+    const feed = await database.collection("users").doc(users[2].uid)
+      .collection("feed")
+      .where("type", "==", "group_invited")
+      .get();
+    return feed.size === 1;
+  });
+  const invitationFeed = await database.collection("users").doc(users[2].uid)
+    .collection("feed")
+    .where("type", "==", "group_invited")
+    .get();
+  assert.equal(
+    invitationFeed.docs[0].get("invitationId"),
+    directInvitations.docs[0].id,
+  );
+  assert.equal(
+    (
+      await database.collection("users").doc(owner.uid).collection("feed").get()
+    ).size,
+    0,
+  );
   await call(users[2], "previewInvite", {
     kind: "direct",
     value: directInvitations.docs[0].id,
@@ -653,8 +681,13 @@ test("M3 triggers keep idea reaction and comment aggregates exact", async () => 
     .doc(member.uid)
     .collection("feed")
     .get();
-  assert.equal(ownerFeed.size, 0);
-  assert.equal(memberFeed.size, 0);
+  assert.equal(ownerFeed.size, 1);
+  assert.equal(ownerFeed.docs[0].get("type"), "idea_commented");
+  assert.equal(ownerFeed.docs[0].get("ideaId"), ideaRef.id);
+  assert.equal(ownerFeed.docs[0].get("expiresAt") instanceof Timestamp, true);
+  assert.equal(memberFeed.size, 1);
+  assert.equal(memberFeed.docs[0].get("type"), "idea_created");
+  assert.equal(memberFeed.docs[0].get("actorId"), owner.uid);
 
   await ideaRef.update({
     isDeleted: true,
@@ -669,7 +702,7 @@ test("M3 triggers keep idea reaction and comment aggregates exact", async () => 
   assert.equal((await ideaRef.get()).get("commentCount"), 1);
 });
 
-test("M4 schedule RSVP completion transitions stay exact and create no feed", async () => {
+test("M4 transitions stay exact while M5 emits only the allowed feed events", async () => {
   const owner = await createClient(30);
   const member = await createClient(31);
   const created = await call<{groupId: string}>(owner, "createGroup", {
@@ -686,6 +719,25 @@ test("M4 schedule RSVP completion transitions stay exact and create no feed", as
   const database = getFirestore(adminApp);
   const groupRef = database.collection("groups").doc(created.groupId);
   const ideaRef = groupRef.collection("ideas").doc("m4-idea-1");
+  const expectedPreRemovalFeedTypes = [
+    "idea_created",
+    "schedule_created",
+    "schedule_updated",
+    "schedule_updated",
+  ].sort();
+  const expectedFeedTypes = [
+    "idea_completed",
+    ...expectedPreRemovalFeedTypes,
+  ].sort();
+  const readFeedTypes = async (): Promise<unknown[]> => {
+    const [ownerFeed, memberFeed] = await Promise.all([
+      database.collection("users").doc(owner.uid).collection("feed").get(),
+      database.collection("users").doc(member.uid).collection("feed").get(),
+    ]);
+    return [...ownerFeed.docs, ...memberFeed.docs]
+      .map((document) => document.get("type"))
+      .sort();
+  };
   const ownerSnapshot = {nickname: "成员30", avatarPath: null};
   const memberSnapshot = {nickname: "成员31", avatarPath: null};
   const now = Timestamp.now();
@@ -852,6 +904,11 @@ test("M4 schedule RSVP completion transitions stay exact and create no feed", as
   );
   assert.equal((await getDoc(memberRsvp)).get("scheduleRevision"), 2);
   assert.equal((await ideaRef.get()).get("schedule.revision"), 3);
+  await waitFor(async () => {
+    const feedTypes = await readFeedTypes();
+    return JSON.stringify(feedTypes) ===
+      JSON.stringify(expectedPreRemovalFeedTypes);
+  }, 15_000);
 
   await call(owner, "removeMember", {
     groupId: created.groupId,
@@ -862,6 +919,7 @@ test("M4 schedule RSVP completion transitions stay exact and create no feed", as
     const counts = (await ideaRef.get()).get("rsvpCounts");
     return counts?.going === 0 && counts?.maybe === 0 && counts?.notGoing === 1;
   });
+  await call(member, "acceptInvite", {kind: "token", value: invite.token});
 
   const ownerIdea = doc(
     owner.firestore,
@@ -904,10 +962,244 @@ test("M4 schedule RSVP completion transitions stay exact and create no feed", as
   assert.equal((await groupRef.get()).get("scheduledCount"), 0);
   assert.equal((await groupRef.get()).get("completedCount"), 1);
 
+  await waitFor(async () => {
+    const feedTypes = await readFeedTypes();
+    return JSON.stringify(feedTypes) === JSON.stringify(expectedFeedTypes);
+  }, 15_000);
   const [ownerFeed, memberFeed] = await Promise.all([
     database.collection("users").doc(owner.uid).collection("feed").get(),
     database.collection("users").doc(member.uid).collection("feed").get(),
   ]);
-  assert.equal(ownerFeed.size, 0);
-  assert.equal(memberFeed.size, 0);
+  const allFeedTypes = [...ownerFeed.docs, ...memberFeed.docs]
+    .map((document) => document.get("type"))
+    .sort();
+  assert.deepEqual(
+    allFeedTypes,
+    expectedFeedTypes,
+  );
+});
+
+test("M5 push delivery respects preferences idempotency partial retry and invalid tokens", async () => {
+  const owner = await createClient(40);
+  const member = await createClient(41);
+  const created = await call<{groupId: string}>(owner, "createGroup", {
+    name: "M5 推送小组",
+    requestId: "m5-push-create-group",
+  });
+  const invite = await call<{token: string}>(
+    owner,
+    "getOrCreateInvite",
+    {groupId: created.groupId},
+  );
+  await call(member, "acceptInvite", {kind: "token", value: invite.token});
+  const database = getFirestore(adminApp);
+  const memberDevices = database.collection("users").doc(member.uid)
+    .collection("devices");
+  await Promise.all([
+    memberDevices.doc("installation-device-1").set({
+      token: "token-1",
+      platform: "android",
+      appVersion: "0.1.0",
+      locale: "zh-CN",
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    }),
+    memberDevices.doc("installation-device-2").set({
+      token: "token-2",
+      platform: "android",
+      appVersion: "0.1.0",
+      locale: "zh-CN",
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    }),
+  ]);
+
+  const sent: PushRequest[][] = [];
+  let attempt = 0;
+  const partialSender = async (requests: PushRequest[]): Promise<PushResult[]> => {
+    sent.push(requests);
+    attempt += 1;
+    return requests.map((request) => ({
+      success: attempt > 1 || request.token === "token-1",
+      errorCode: attempt > 1 || request.token === "token-1" ?
+        undefined :
+        "messaging/internal-error",
+    }));
+  };
+  const data = {
+    type: "schedule_created" as const,
+    groupId: created.groupId,
+    ideaId: "idea-1",
+  };
+  assert.equal(
+    await deliverPush(
+      "m5_partial_delivery",
+      [{uid: member.uid}],
+      data,
+      partialSender,
+    ),
+    false,
+  );
+  assert.equal(sent[0].length, 2);
+  assert.equal(
+    await deliverPush(
+      "m5_partial_delivery",
+      [{uid: member.uid}],
+      data,
+      partialSender,
+    ),
+    true,
+  );
+  assert.equal(sent[1].length, 1);
+  assert.equal(sent[1][0].token, "token-2");
+  await deliverPush(
+    "m5_partial_delivery",
+    [{uid: member.uid}],
+    data,
+    partialSender,
+  );
+  assert.equal(sent.length, 2);
+
+  await database.collection("users").doc(member.uid).update({
+    "notificationPrefs.newSchedule": false,
+  });
+  await deliverPush(
+    "m5_preference_off",
+    [{uid: member.uid}],
+    data,
+    partialSender,
+  );
+  assert.equal(sent.length, 2);
+
+  await database.collection("users").doc(member.uid).update({
+    "notificationPrefs.newSchedule": true,
+  });
+  const invalidSender = async (requests: PushRequest[]): Promise<PushResult[]> =>
+    requests.map(() => ({
+      success: false,
+      errorCode: "messaging/registration-token-not-registered",
+    }));
+  assert.equal(
+    await deliverPush(
+      "m5_invalid_tokens",
+      [{uid: member.uid}],
+      data,
+      invalidSender,
+    ),
+    true,
+  );
+  assert.equal((await memberDevices.get()).empty, true);
+});
+
+test("M5 reminder excludes not-going handles too-late and is idempotent", async () => {
+  const owner = await createClient(50);
+  const member = await createClient(51);
+  const created = await call<{groupId: string}>(owner, "createGroup", {
+    name: "M5 提醒小组",
+    requestId: "m5-reminder-create-group",
+  });
+  const invite = await call<{token: string}>(
+    owner,
+    "getOrCreateInvite",
+    {groupId: created.groupId},
+  );
+  await call(member, "acceptInvite", {kind: "token", value: invite.token});
+  const database = getFirestore(adminApp);
+  const now = Timestamp.now();
+  const groupRef = database.collection("groups").doc(created.groupId);
+  const ideaRef = groupRef.collection("ideas").doc("reminder-eligible");
+  const startAt = Timestamp.fromMillis(now.toMillis() + 20 * 60 * 1000);
+  await ideaRef.set({
+    groupId: created.groupId,
+    title: "去看日落",
+    category: "activity",
+    note: null,
+    media: null,
+    locationOrLink: null,
+    createdBy: owner.uid,
+    creatorSnapshot: {nickname: "成员50", avatarPath: null},
+    status: "scheduled",
+    schedule: {
+      startAt,
+      timezone: "Asia/Shanghai",
+      meetingPoint: null,
+      note: null,
+      scheduledBy: owner.uid,
+      schedulerSnapshot: {nickname: "成员50", avatarPath: null},
+      scheduledAt: Timestamp.fromMillis(now.toMillis() - 60 * 60 * 1000),
+      updatedBy: owner.uid,
+      updatedAt: Timestamp.fromMillis(now.toMillis() - 60 * 60 * 1000),
+      revision: 1,
+    },
+    completion: null,
+    reactionCounts: {want: 0, ok: 0, notInterested: 0},
+    rsvpCounts: {going: 0, maybe: 0, notGoing: 1},
+    commentCount: 0,
+    reminderClaimedAt: null,
+    reminderSentAt: null,
+    reminderSkippedReason: null,
+    lastModifiedBy: owner.uid,
+    createdAt: now,
+    updatedAt: now,
+    isDeleted: false,
+    deletedAt: null,
+    deletedBy: null,
+    schemaVersion: 1,
+  });
+  await ideaRef.collection("rsvps").doc(member.uid).set({
+    groupId: created.groupId,
+    ideaId: ideaRef.id,
+    userId: member.uid,
+    value: "not_going",
+    scheduleRevision: 1,
+    userSnapshot: {nickname: "成员51", avatarPath: null},
+    createdAt: now,
+    updatedAt: now,
+    schemaVersion: 1,
+  });
+  for (const [uid, token] of [
+    [owner.uid, "owner-reminder-token"],
+    [member.uid, "member-reminder-token"],
+  ]) {
+    await database.collection("users").doc(uid).collection("devices")
+      .doc(`installation-${uid}`).set({
+        token,
+        platform: "android",
+        appVersion: "0.1.0",
+        locale: "zh-CN",
+        createdAt: now,
+        updatedAt: now,
+      });
+  }
+  const sent: PushRequest[] = [];
+  const sender = async (requests: PushRequest[]): Promise<PushResult[]> => {
+    sent.push(...requests);
+    return requests.map(() => ({success: true}));
+  };
+  await sendUpcomingReminders(sender, now);
+  assert.deepEqual(sent.map((request) => request.token), ["owner-reminder-token"]);
+  assert.equal((await ideaRef.get()).get("reminderSentAt") instanceof Timestamp, true);
+  await sendUpcomingReminders(sender, Timestamp.fromMillis(now.toMillis() + 1_000));
+  assert.equal(sent.length, 1);
+
+  const tooLateRef = groupRef.collection("ideas").doc("reminder-too-late");
+  const eligibleData = (await ideaRef.get()).data() ?? {};
+  const eligibleSchedule = (await ideaRef.get()).get("schedule") as
+    Record<string, unknown>;
+  await tooLateRef.set({
+    ...eligibleData,
+    title: "临时安排",
+    schedule: {
+      ...eligibleSchedule,
+      startAt: Timestamp.fromMillis(now.toMillis() + 25 * 60 * 1000),
+      updatedAt: now,
+      revision: 2,
+    },
+    reminderClaimedAt: null,
+    reminderSentAt: null,
+    reminderSkippedReason: null,
+  });
+  await sendUpcomingReminders(sender, now);
+  assert.equal((await tooLateRef.get()).get("reminderSkippedReason"), "too_late");
+  assert.equal(sent.length, 1);
 });

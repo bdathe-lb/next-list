@@ -82,7 +82,8 @@
 | `updatedAt` | timestamp | ✓ | token 刷新时间 |
 | `createdAt` | timestamp | ✓ | 首次注册时间 |
 
-`deviceId` 使用应用安装范围随机 ID，不使用硬件标识。
+`deviceId` 使用应用安装范围随机 ID，不使用硬件标识。投递时每个用户只读取按
+`updatedAt` 排序的最近 20 台设备，限制异常设备文档造成的发送并发。
 
 ### 2.2 `users/{uid}/feed/{feedId}`
 
@@ -95,6 +96,7 @@
 | `groupNameSnapshot` | string | ✓ | 生成时组名 |
 | `ideaId` | string/null | ✓ | 目标想法 |
 | `ideaTitleSnapshot` | string/null | ✓ | 生成时标题 |
+| `invitationId` | string/null | ✓ | 定向邀请目标；其他类型为 null |
 | `actorId` | string | ✓ | 操作者 uid |
 | `actorSnapshot` | map | ✓ | `UserSnapshot` |
 | `createdAt` | timestamp | ✓ | 事件时间 |
@@ -111,7 +113,9 @@
 - `idea_completed`
 - `group_invited`
 
-`feedId` 建议由 `{cloudEventId}_{recipientUid}` 的哈希确定，保证触发器重试不重复创建。
+`feedId` 由 `{cloudEventId}:{eventType}:{recipientUid}` 的 SHA-256 摘要确定，保证
+触发器重试不重复创建且不在 ID 中暴露 uid。`expiresAt` 已在索引配置中启用 TTL；
+TTL 删除是最终一致的，客户端查询不能把过期文档继续视为有效动态。
 
 ### 2.3 `users/{uid}/invitations/{invitationId}`
 
@@ -366,6 +370,12 @@
 
 配置 Firestore TTL 自动删除过期幂等记录。保留时长需覆盖 CloudEvent 最大重试窗口，建议至少 7 天。
 
+推送的每设备投递状态存放在
+`functionEvents/{eventId}/deliveries/{deliveryId}`，包含 `uid/deviceId/claimedAt/
+succeededAt/lastErrorKind/updatedAt/expiresAt/schemaVersion`。`deliveryId` 同样使用
+摘要，成功设备不会在部分失败重试时再次发送；投递记录的 `expiresAt` 启用 TTL。
+该子集合与父集合一样完全禁止客户端读写。
+
 ## 7. 查询与索引
 
 实际索引以 Emulator 报错和最终查询实现为准，初始至少准备：
@@ -395,6 +405,8 @@
 - 随机决定分别分页读取 `idea` 和 `scheduled`，每页不超过 200 条，再在内存按分类和
   `reactionCounts.want` 过滤并等概率抽取；不能把单页查询结果直接视为完整候选集。
 - 临近提醒 collection group 查询要求 idea 文档冗余 `groupId`，便于服务端后续读取小组。
+- M5 临近查询同时等值过滤 `reminderSkippedReason == null`，对应提交的唯一新增
+  collection-group 复合索引；Feed 的 `createdAt desc` 与未读查询使用自动索引。
 - 每次新增查询都应在 `firestore.indexes.json` 中审查并提交。
 - M4 已开放分类后的已安排/已完成排序索引，以及按文档 ID 分页读取随机候选所需
   索引。临近提醒仍属于 M5，不提前创建对应索引。

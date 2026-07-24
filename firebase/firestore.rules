@@ -530,6 +530,108 @@ service cloud.firestore {
         && value.ideaComment is bool;
     }
 
+    function defaultNotificationPrefs(value) {
+      return value == {
+        "groupInvite": true,
+        "newSchedule": true,
+        "upcomingReminder": true,
+        "ideaComment": true
+      };
+    }
+
+    function validDeviceShape(value) {
+      return value is map
+        && value.keys().hasAll([
+          "token",
+          "platform",
+          "appVersion",
+          "locale",
+          "createdAt",
+          "updatedAt"
+        ])
+        && value.keys().hasOnly([
+          "token",
+          "platform",
+          "appVersion",
+          "locale",
+          "createdAt",
+          "updatedAt"
+        ])
+        && value.token is string
+        && value.token.size() >= 1
+        && value.token.size() <= 4096
+        && value.platform == "android"
+        && value.appVersion is string
+        && value.appVersion.size() >= 1
+        && value.appVersion.size() <= 64
+        && value.locale is string
+        && value.locale.size() >= 2
+        && value.locale.size() <= 35
+        && value.createdAt is timestamp
+        && value.updatedAt is timestamp;
+    }
+
+    function validFeedShape(value) {
+      return value is map
+        && value.keys().hasAll([
+          "type",
+          "groupId",
+          "groupNameSnapshot",
+          "ideaId",
+          "ideaTitleSnapshot",
+          "invitationId",
+          "actorId",
+          "actorSnapshot",
+          "createdAt",
+          "readAt",
+          "expiresAt",
+          "schemaVersion"
+        ])
+        && value.keys().hasOnly([
+          "type",
+          "groupId",
+          "groupNameSnapshot",
+          "ideaId",
+          "ideaTitleSnapshot",
+          "invitationId",
+          "actorId",
+          "actorSnapshot",
+          "createdAt",
+          "readAt",
+          "expiresAt",
+          "schemaVersion"
+        ])
+        && value.type in [
+          "idea_created",
+          "schedule_created",
+          "schedule_updated",
+          "idea_commented",
+          "idea_completed",
+          "group_invited"
+        ]
+        && value.groupId is string
+        && value.groupId.size() >= 1
+        && value.groupId.size() <= 128
+        && value.groupNameSnapshot is string
+        && value.groupNameSnapshot.size() >= 1
+        && value.groupNameSnapshot.size() <= 30
+        && (value.ideaId == null || value.ideaId is string)
+        && (
+          value.ideaTitleSnapshot == null
+          || (
+            value.ideaTitleSnapshot is string
+            && value.ideaTitleSnapshot.size() <= 80
+          )
+        )
+        && (value.invitationId == null || value.invitationId is string)
+        && value.actorId is string
+        && validSnapshot(value.actorSnapshot)
+        && value.createdAt is timestamp
+        && (value.readAt == null || value.readAt is timestamp)
+        && value.expiresAt is timestamp
+        && value.schemaVersion == 1;
+    }
+
     function tokenEmailVerified() {
       return request.auth.token.email_verified == true;
     }
@@ -568,6 +670,7 @@ service cloud.firestore {
     function validUserCreate(uid) {
       return isOwner(uid)
         && validUserShape(uid, request.resource.data)
+        && defaultNotificationPrefs(request.resource.data.notificationPrefs)
         && request.resource.data.emailVerified == tokenEmailVerified()
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time;
@@ -594,13 +697,34 @@ service cloud.firestore {
       allow delete: if false;
 
       match /devices/{deviceId} {
-        allow read, create, update, delete: if isOwner(uid);
+        allow read: if isOwner(uid);
+        allow create: if isOwner(uid)
+          && deviceId.size() >= 16
+          && deviceId.size() <= 128
+          && validDeviceShape(request.resource.data)
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time;
+        allow update: if isOwner(uid)
+          && validDeviceShape(request.resource.data)
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "token",
+            "platform",
+            "appVersion",
+            "locale",
+            "updatedAt"
+          ])
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if isOwner(uid);
       }
 
       match /feed/{feedId} {
-        allow read: if isOwner(uid);
+        allow read: if isOwner(uid) && validFeedShape(resource.data);
         allow update: if isOwner(uid)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["readAt"]);
+          && validFeedShape(request.resource.data)
+          && resource.data.readAt == null
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["readAt"])
+          && request.resource.data.readAt == request.time;
         allow create, delete: if false;
       }
 

@@ -4,13 +4,62 @@
 
 ## 当前阶段
 
-**M4：安排、随机与完成（已完成）**
+**M5：动态与通知（已关闭）**
 
-M0～M4 均已关闭。M4 的 Android 实现、可信 RSVP 聚合、Security Rules、
-单元/集成/设备测试，以及两个只读 `Pixel_9_Pro` API 37 Emulator 实例上的并行
-设备验证均已完成。实现提交 `e5b3a35` 已推送至 GitHub；远端
-[CI #30094931847](https://github.com/bdathe-lb/next-list/actions/runs/30094931847)
-的 Android 与 Functions and Firebase Rules 两个 Job 均通过，M4 正式关闭。
+M0～M5 已关闭。M5 实现提交 `6a8040c` 已推送至
+[Draft PR #2](https://github.com/bdathe-lb/next-list/pull/2)；本地全量验收和远端
+[CI #30102400540](https://github.com/bdathe-lb/next-list/actions/runs/30102400540)
+的 Android、Functions and Firebase Rules 两个 Job 均通过。真实 Firebase 环境
+尚未部署。
+
+## M5 已完成
+
+### 个人动态与导航
+
+- [x] `users/{uid}/feed/{feedId}` 按 `createdAt` 倒序实时监听第一页，每页 30 条，
+  使用 `createdAt + documentId` 游标加载更早数据；支持加载、空、失败、重试、
+  下拉刷新、离线缓存和实时插入去重。
+- [x] 六类动态均有中文图标、文案、小组、时间和 TalkBack 未读说明；单条点击先
+  使用服务端时间标记已读，全部标记已读会查询并批量处理所有未读文档，而不只处理
+  当前页。
+- [x] Feed 只由 Functions 写入；ID 使用 CloudEvent、事件类型和收件人 uid 的摘要，
+  重试不重复。`expiresAt` 固定为事件时间后 90 天并启用 Firestore TTL。
+- [x] Feed 与推送共用有限 ID 目标；想法、小组或邀请失效时返回安全页面并显示中文
+  提示。通知目标保存在 DataStore，未登录可恢复，最近 50 个 message ID 防止重复
+  点击再次执行导航。
+
+### 偏好、设备与系统通知
+
+- [x] “我的 → 通知设置”实现 `groupInvite/newSchedule/upcomingReminder/
+  ideaComment` 四类开关，默认均为 true；包含加载、保存中、成功、失败重试、
+  Firestore pending 与离线缓存状态。
+- [x] Android 13+ 使用 `POST_NOTIFICATIONS` 运行时权限；拒绝后应用与 Feed 正常，
+  页面持续提供重新申请和打开系统通知设置入口。
+- [x] 安装范围 `UUID` 作为 `deviceId`，登录和 token 刷新注册
+  `token/platform/appVersion/locale/createdAt/updatedAt`；退出清理限制在 1.5 秒，
+  失败或离线不阻塞 Firebase Auth 退出。
+- [x] `FirebaseMessagingService` 处理前台/后台 data message，系统通知只按受限
+  类型生成固定安全文案；payload 不信任标题、昵称、权限或正文，评论全文不会进入
+  payload、通知正文或日志。
+
+### Functions、提醒与安全
+
+- [x] 新想法和完成只写 Feed；首次安排及任意安排 revision 写 Feed，但仅首次或
+  `schedule.startAt` 实际变化发送安排推送；评论仅写给想法创建者并排除本人；
+  定向邀请仅写目标用户。表态、RSVP、随机和资料修改没有通知触发器。
+- [x] 推送先按当前有效 membership、四类偏好和合法 Android device 计算收件设备；
+  每用户只读取最近更新的 20 台设备，FCM 每批最多 500 条；每设备投递带 10 分钟
+  租约与成功记录。部分失败只重试失败设备，无效 token 被删除，原业务写入不因
+  Feed/FCM 失败回滚。
+- [x] 每 5 分钟 Scheduled Function 查询未来 30 分钟的 `scheduled` ideas；事务内
+  复查删除状态、开始时间、revision、提醒字段和抢占租约。不通知 `not_going`，
+  尊重偏好；按安排实际保存的 `schedule.updatedAt` 判断不足 30 分钟并标记
+  `too_late`，不会因触发器启动延迟误判。
+- [x] Firestore Rules 将 Feed 限制为本人读取与一次合法 `readAt` 更新，严格校验
+  device 字段、平台、时间和所有权，通知偏好只允许四个布尔值；所有客户端仍不能
+  写提醒、聚合、Feed 或投递记录。
+- [x] 只新增 M5 临近提醒所需 collection-group 复合索引，并为 Feed、幂等事件和
+  每设备投递的 `expiresAt` 启用 TTL；未加入 M6 预留索引。
 
 ## M4 已完成
 
@@ -157,18 +206,35 @@ M0～M4 均已关闭。M4 的 Android 实现、可信 RSVP 聚合、Security Rul
 
 | 检查 | 状态 | 结果 |
 | --- | --- | --- |
-| Android 单元测试 | 通过 | 56/56，含安排/完成校验、revision 冲突、过期 RSVP、图片失败恢复、随机均匀性和一次性导航 |
-| Android Lint | 通过 | 0 errors；仅保留依赖版本提示 |
+| Android 单元测试 | 通过 | 65/65；新增 Feed 实时/分页/已读、六类文案目标、偏好失败重试、非法 payload、登录设备注册和退出清理失败不阻塞 |
+| Android Lint | 通过 | 0 errors；仅保留 targetSdk 与依赖版本提示 |
 | Debug APK | 通过 | `assembleDebug` |
-| Compose / Android 设备测试 | 通过 | 22/22，在两个 Pixel_9_Pro API 37 实例上各执行一次，共 44 次通过 |
-| Functions lint/typecheck | 通过 | ESLint + TypeScript |
-| Functions 单元测试 | 通过 | 11/11，含 M2/M3 基线与 M4 RSVP 聚合输入规则 |
-| Functions Emulator 集成 | 通过 | 3/3 场景；含并发安排、revision 冲突、RSVP 幂等/清理、完成与无 M5 动态 |
-| Firestore Rules | 通过 | 32/32 allow/deny 用例 |
+| Compose / Android 设备测试 | 通过 | 28/28，在两个只读 Pixel_9_Pro API 37 实例上并行执行，共 56 次通过 |
+| Functions lint/typecheck | 通过 | ESLint + TypeScript，0 errors |
+| Functions 单元测试 | 通过 | 16/16；新增确定性 ID、无效 token 分类、提醒窗口、租约和 `too_late` 精确边界 |
+| Functions Emulator 集成 | 通过 | 5/5；新增完整 Feed 类型、偏好、部分失败重试、无效 token、临近提醒与 `too_late` |
+| Firestore Rules | 通过 | 35/35 allow/deny 用例 |
 | Storage Rules | 通过 | 11/11 allow/deny 用例 |
-| Release APK | 通过 | `assembleRelease`，未连接 Emulator |
-| API 37 M4 双设备烟测 | 通过 | 两个只读 Pixel_9_Pro 实例并行执行完整 22 条设备用例 |
-| GitHub Actions | 通过 | M4 [CI #30094931847](https://github.com/bdathe-lb/next-list/actions/runs/30094931847)；Android 与 Functions and Firebase Rules 两个 Job 均通过 |
+| Release APK | 通过 | `assembleRelease`；Release 不连接 Emulator |
+| API 37 M5 双设备自动化 | 通过 | 两个只读 Pixel_9_Pro 实例并行执行完整 28 条设备用例 |
+| M5 真实两账号/FCM 烟测 | 待外部环境 | Emulator 无真实 FCM，且本轮未配置真实 Firebase 项目；不得记为生产通过 |
+| GitHub Actions | 通过 | [CI #30102400540](https://github.com/bdathe-lb/next-list/actions/runs/30102400540)：Android 2m41s；Functions and Firebase Rules 1m29s |
+
+### API 37 M5 设备验证明细
+
+设备：两个并行只读 `Pixel_9_Pro` AVD，API 37。
+
+- 两台设备各执行 28 条 Compose/Android 测试且 0 失败，共 56 次通过；M0～M4 的
+  22 条既有设备基线全部保留。
+- 新增 6 条 M5 用例覆盖 Feed 未读文案、小组与分页操作、空/离线状态、系统通知
+  权限关闭说明、权限允许状态、四类开关 TalkBack 标签、系统设置入口、2 倍大字体
+  滚动可达，以及待处理通知跨 Repository 重建恢复且消费后不重放。
+- Functions Emulator 的 5 个集成场景另行验证两成员事件矩阵、成员移除/重新加入、
+  Feed 收件人、推送偏好、部分失败只重试失败设备、无效 token 清理、`not_going`、
+  `too_late` 和重复提醒。
+- 本轮没有把以上自动化测试冒充为真实 FCM 或完整手工两账号 smoke。真实系统托盘
+  投递、Google FCM token、Cloud Scheduler 自动唤起及通知点击后的端到端 Firestore
+  权限复查，仍需真实 Firebase 开发项目。
 
 ### API 37 M4 烟测明细
 
@@ -240,6 +306,11 @@ M3 远端 CI：[CI #30086419538](https://github.com/bdathe-lb/next-list/actions/
 提交 `83cd9ed` 的 Android 与 Functions and Firebase Rules 两个 Job 均通过。
 M4 远端 CI：[CI #30094931847](https://github.com/bdathe-lb/next-list/actions/runs/30094931847)，
 提交 `e5b3a35` 的 Android 与 Functions and Firebase Rules 两个 Job 均通过。
+合并到 `main` 后的 [CI #30095825232](https://github.com/bdathe-lb/next-list/actions/runs/30095825232)
+也已通过。
+M5 远端 CI：[CI #30102400540](https://github.com/bdathe-lb/next-list/actions/runs/30102400540)，
+实现提交 `6a8040c` 的 Android 与 Functions and Firebase Rules 两个 Job 均通过；
+M5 随后正式关闭。
 
 ## 当前限制与外部配置
 
@@ -249,13 +320,15 @@ M4 远端 CI：[CI #30094931847](https://github.com/bdathe-lb/next-list/actions/
   仍是外部配置事项。
 - 邮件发件模板/域名、动态链接落地页、生产监控、隐私政策和账号注销按后续发布
   加固计划处理。
-- M3/M4 的 Firestore/Storage Rules、复合索引和 Functions 尚未部署到真实项目；
+- M3～M5 的 Firestore/Storage Rules、复合索引和 Functions 尚未部署到真实项目；
   生产环境还需部署后执行 App Check、Rules、图片上传和两设备预发布 smoke test。
-- M5 的动态、通知偏好、FCM、临近提醒和通知导航尚未实现；M4 不创建动态或发送
-  通知。
+- Firebase Emulator 不提供真实 FCM 投递；Functions 集成测试使用可替换发送器验证
+  payload、偏好、幂等、部分失败和 token 清理。未运行 Pub/Sub Emulator 时 Scheduled
+  Function 不会自动按 5 分钟触发，集成测试直接调用同一提醒处理器。
+- 真实 Android 通知权限、系统托盘、token 刷新、通知点击冷启动与 Cloud Scheduler
+  仍需在真实 Firebase 开发项目完成两账号预发布 smoke。
 
 ## 下一步
 
-1. 开始 M5“动态与通知”，实现个人动态、通知偏好、FCM、临近提醒和通知导航。
-2. 如具备真实 Firebase 项目，部署 M3/M4 Rules、索引和 Functions，配置 Play
+1. 如具备真实 Firebase 项目，部署 M3～M5 Rules、索引和 Functions，配置 Play
    Integrity，并执行生产预发布 App Check / Rules / Storage 双设备 smoke test。

@@ -36,7 +36,7 @@ import androidx.navigation.navArgument
 import com.example.nextlist.core.result.toUserMessage
 import com.example.nextlist.data.firebase.FirebaseRuntimeStatus
 import com.example.nextlist.domain.model.AccountSession
-import com.example.nextlist.feature.activityfeed.ActivityFeedScreen
+import com.example.nextlist.feature.activityfeed.ActivityFeedRoute
 import com.example.nextlist.feature.auth.AccountSessionViewModel
 import com.example.nextlist.feature.auth.AuthNavHost
 import com.example.nextlist.feature.groups.CreateGroupRoute
@@ -55,10 +55,14 @@ import com.example.nextlist.feature.ideas.CompletionFormRoute
 import com.example.nextlist.feature.ideas.RandomDecisionRoute
 import com.example.nextlist.feature.profile.CompleteProfileRoute
 import com.example.nextlist.feature.profile.EditProfileRoute
+import com.example.nextlist.feature.profile.NotificationSettingsRoute
 import com.example.nextlist.feature.profile.ProfileRoute
+import com.example.nextlist.domain.model.AppTarget
+import com.example.nextlist.domain.model.toAppTarget
 import kotlinx.coroutines.launch
 
 private const val EDIT_PROFILE_ROUTE = "profile/edit"
+private const val NOTIFICATION_SETTINGS_ROUTE = "profile/notifications"
 private const val CREATE_GROUP_ROUTE = "group/create"
 private const val JOIN_CODE_ROUTE = "group/join-code"
 private const val JOIN_GROUP_ROUTE = "group/join?kind={kind}&value={value}"
@@ -107,12 +111,14 @@ private fun SignedInApp(
     session: AccountSession.SignedIn,
     modifier: Modifier = Modifier,
     pendingInviteViewModel: PendingInviteViewModel = hiltViewModel(),
+    notificationViewModel: NotificationNavigationViewModel = hiltViewModel(),
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val topLevelRoutes = TopLevelDestination.entries.map { it.route }.toSet()
     val pendingInvite by pendingInviteViewModel.pendingInvite.collectAsStateWithLifecycle()
+    val pendingNotification by notificationViewModel.pendingTarget.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -123,6 +129,40 @@ private fun SignedInApp(
                 "group/join?kind=$kind&value=${Uri.encode(invite.value)}",
             ) {
                 launchSingleTop = true
+            }
+        }
+    }
+
+    fun openTarget(target: AppTarget) {
+        when (target) {
+            is AppTarget.Group -> navController.navigate(
+                "group/${Uri.encode(target.groupId)}",
+            ) {
+                launchSingleTop = true
+            }
+            is AppTarget.Idea -> navController.navigate(
+                "group/${Uri.encode(target.groupId)}/idea/${Uri.encode(target.ideaId)}",
+            ) {
+                launchSingleTop = true
+            }
+            is AppTarget.Invitation -> navController.navigate(
+                "group/join?kind=direct&value=${Uri.encode(target.invitationId)}",
+            ) {
+                launchSingleTop = true
+            }
+        }
+    }
+
+    LaunchedEffect(pendingNotification) {
+        pendingNotification?.let { pending ->
+            notificationViewModel.consume(pending.messageId)
+            val target = pending.toAppTarget()
+            if (target == null) {
+                navController.navigate(TopLevelDestination.GROUPS.route) {
+                    launchSingleTop = true
+                }
+            } else {
+                openTarget(target)
             }
         }
     }
@@ -178,16 +218,22 @@ private fun SignedInApp(
                 )
             }
             composable(TopLevelDestination.ACTIVITY_FEED.route) {
-                ActivityFeedScreen()
+                ActivityFeedRoute(onOpenTarget = ::openTarget)
             }
             composable(TopLevelDestination.PROFILE.route) {
                 ProfileRoute(
                     session = session,
                     onEditProfile = { navController.navigate(EDIT_PROFILE_ROUTE) },
+                    onNotificationSettings = {
+                        navController.navigate(NOTIFICATION_SETTINGS_ROUTE)
+                    },
                 )
             }
             composable(EDIT_PROFILE_ROUTE) {
                 EditProfileRoute(onBack = { navController.popBackStack() })
+            }
+            composable(NOTIFICATION_SETTINGS_ROUTE) {
+                NotificationSettingsRoute(onBack = { navController.popBackStack() })
             }
             composable(CREATE_GROUP_ROUTE) {
                 CreateGroupRoute(
@@ -306,6 +352,9 @@ private fun SignedInApp(
                         navController.navigate(
                             "group/${Uri.encode(groupId)}/idea/${Uri.encode(ideaId)}/complete",
                         )
+                    },
+                    onAccessLost = { message ->
+                        showMessageAndReturn(message)
                     },
                 )
             }
