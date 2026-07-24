@@ -4,10 +4,10 @@
 
 ## 当前阶段
 
-**M0：项目骨架（本地验证与设备烟测完成，待首次远端 CI）**
+**M0：项目骨架（已完成）**
 
-M0 的代码、本地自动化检查和 API 37 模拟器烟测已经完成。正式关闭 M0 前，
-还需要在代码推送后确认 GitHub Actions 首次运行通过。
+M0 的代码、本地自动化检查、API 37 模拟器烟测和首次远端 CI 均已通过。
+项目骨架阶段正式关闭，下一阶段为 M1“账号与资料”。
 
 ## 本轮已完成
 
@@ -38,7 +38,7 @@ M0 的代码、本地自动化检查和 API 37 模拟器烟测已经完成。正
 | Firestore Rules 测试 | 通过 | 3/3 |
 | Storage Rules 测试 | 通过 | 3/3 |
 | Functions 生产依赖审计 | 通过 | 0 个已知漏洞 |
-| GitHub Actions | 待运行 | 仓库尚未推送到远端 |
+| GitHub Actions | 通过 | [CI #30066326401](https://github.com/bdathe-lb/next-list/actions/runs/30066326401)；Android 与 Firebase 两个 Job 均通过 |
 | Android 设备烟测 | 通过 | `Pixel_9_Pro` API 37；Debug 应用启动、三入口切换和 Emulator 状态正常 |
 
 ## 技术基线
@@ -70,9 +70,9 @@ M0 的代码、本地自动化检查和 API 37 模拟器烟测已经完成。正
 - Firebase CLI 15 的 Emulator 运行时要求 Java 21，Firebase CI 已改用 JDK 21。
 - Firestore 与 Storage Rules 测试共享同一项目时存在竞争，已改为串行执行。
 - Functions 间接依赖中的旧版 `uuid` 存在中危公告，已安全覆盖到 11.1.1。
+- GitHub 已弃用 Actions 的 Node.js 20 运行时，官方 Actions 已升级到当前稳定主版本。
 
-## 当前限制与下一步
+## 下一步
 
-1. 推送仓库并确认 GitHub Actions 两个 Job 均通过，随后关闭 M0。
-2. 创建真实 Firebase 项目，将控制台配置保存为本地 `app/google-services.json`。
-3. 进入 M1“账号与资料”，实现邮箱登录、用户资料和头像上传。
+1. 创建真实 Firebase 开发项目，将控制台配置保存为本地 `app/google-services.json`。
+2. 进入 M1“账号与资料”，实现邮箱登录、用户资料和头像上传。
