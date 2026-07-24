@@ -6,12 +6,6 @@ service firebase.storage {
       return request.auth != null;
     }
 
-    function validImage() {
-      return request.resource != null
-        && request.resource.size < 10 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
-    }
-
     function validAvatar(fileName) {
       return request.resource != null
         && request.resource.size < 10 * 1024 * 1024
@@ -43,9 +37,13 @@ service firebase.storage {
       allow delete: if signedIn() && request.auth.uid == uid;
     }
 
-    match /groups/{groupId}/ideas/{ideaId}/{allPaths=**} {
+    match /groups/{groupId}/ideas/{ideaId}/cover/{fileName} {
       allow read: if isActiveMember(groupId);
-      allow create, update: if isActiveMember(groupId) && validImage();
+      allow create, update: if isActiveMember(groupId)
+        && request.resource != null
+        && request.resource.size <= 2 * 1024 * 1024
+        && request.resource.contentType == "image/webp"
+        && fileName.matches('^[A-Za-z0-9_-]+[.]webp$');
       allow delete: if isActiveMember(groupId);
     }
 

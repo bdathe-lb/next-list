@@ -16,7 +16,12 @@ import com.example.nextlist.domain.model.InviteCredential
 import com.example.nextlist.domain.model.InviteCredentialKind
 import com.example.nextlist.domain.model.InviteCredentials
 import com.example.nextlist.domain.model.InvitePreview
+import com.example.nextlist.domain.model.Idea
+import com.example.nextlist.domain.model.IdeaCategory
+import com.example.nextlist.domain.model.IdeaStatus
+import com.example.nextlist.domain.model.RealtimeItems
 import com.example.nextlist.domain.repository.GroupRepository
+import com.example.nextlist.domain.repository.IdeaRepository
 import com.example.nextlist.domain.repository.AvatarRepository
 import com.example.nextlist.domain.repository.PendingInviteRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -27,6 +32,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
@@ -265,6 +271,11 @@ class JoinGroupViewModel @Inject constructor(
 data class GroupDetailUiState(
     val group: LoadState<Group> = LoadState.Loading,
     val members: List<GroupMember> = emptyList(),
+    val ideas: LoadState<List<Idea>> = LoadState.Loading,
+    val selectedStatus: IdeaStatus = IdeaStatus.IDEA,
+    val selectedCategory: IdeaCategory? = null,
+    val isFromCache: Boolean = false,
+    val isRefreshing: Boolean = false,
     val currentUserId: String? = null,
     val accessLostMessage: String? = null,
 )
@@ -272,45 +283,140 @@ data class GroupDetailUiState(
 @HiltViewModel
 class GroupDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    repository: GroupRepository,
+    private val repository: GroupRepository,
+    private val ideaRepository: IdeaRepository,
     private val avatarRepository: AvatarRepository,
 ) : ViewModel() {
     private val groupId = savedStateHandle.get<String>("groupId").orEmpty()
+    private val mutableState = MutableStateFlow(
+        GroupDetailUiState(currentUserId = repository.currentUserId()),
+    )
+    val uiState = mutableState.asStateFlow()
+    private val retryKey = MutableStateFlow(0)
 
-    val uiState: StateFlow<GroupDetailUiState> = combine(
-        repository.observeGroup(groupId),
-        repository.observeMembers(groupId),
-    ) { groupResult, memberResult ->
-        val groupState = when (groupResult) {
-            is AppResult.Success -> LoadState.Content(groupResult.value)
-            is AppResult.Failure -> LoadState.Error(
-                groupResult.error,
-                groupResult.error == AppError.NETWORK_UNAVAILABLE,
+    init {
+        observeGroupAndMembers()
+        observeSelectedIdeas()
+    }
+
+    fun selectStatus(status: IdeaStatus) {
+        if (mutableState.value.selectedStatus == status) return
+        mutableState.update {
+            it.copy(
+                selectedStatus = status,
+                selectedCategory = if (status == IdeaStatus.IDEA) {
+                    it.selectedCategory
+                } else {
+                    null
+                },
+                ideas = LoadState.Loading,
             )
         }
-        GroupDetailUiState(
-            group = groupState,
-            members = resolveMembers(
-                (memberResult as? AppResult.Success)?.value.orEmpty(),
-                avatarRepository,
-            ),
-            currentUserId = repository.currentUserId(),
-            accessLostMessage = when {
-                groupResult is AppResult.Failure &&
-                    groupResult.error == AppError.PERMISSION_DENIED ->
-                    "你已不在这个小组中"
-                groupResult is AppResult.Failure &&
-                    groupResult.error == AppError.GROUP_DISSOLVED ->
-                    "小组已解散"
-                else -> null
-            },
-        )
-    }.onStart { emit(GroupDetailUiState()) }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5_000),
-            initialValue = GroupDetailUiState(),
-        )
+    }
+
+    fun selectCategory(category: IdeaCategory?) {
+        if (mutableState.value.selectedStatus != IdeaStatus.IDEA) return
+        if (mutableState.value.selectedCategory == category) return
+        mutableState.update { it.copy(selectedCategory = category, ideas = LoadState.Loading) }
+    }
+
+    fun refresh() {
+        mutableState.update { it.copy(isRefreshing = true) }
+        retryKey.update { it + 1 }
+    }
+
+    private fun observeGroupAndMembers() {
+        viewModelScope.launch {
+            combine(
+                repository.observeGroup(groupId),
+                repository.observeMembers(groupId),
+            ) { group, members -> group to members }
+                .collect { (groupResult, memberResult) ->
+                    val groupState = when (groupResult) {
+                        is AppResult.Success -> LoadState.Content(groupResult.value)
+                        is AppResult.Failure -> LoadState.Error(
+                            groupResult.error,
+                            groupResult.error == AppError.NETWORK_UNAVAILABLE,
+                        )
+                    }
+                    mutableState.update {
+                        it.copy(
+                            group = groupState,
+                            members = resolveMembers(
+                                (memberResult as? AppResult.Success)?.value.orEmpty(),
+                                avatarRepository,
+                            ),
+                            accessLostMessage = when {
+                                groupResult is AppResult.Failure &&
+                                    groupResult.error == AppError.PERMISSION_DENIED ->
+                                    "你已不在这个小组中"
+                                groupResult is AppResult.Failure &&
+                                    groupResult.error == AppError.GROUP_DISSOLVED ->
+                                    "小组已解散"
+                                else -> null
+                            },
+                        )
+                    }
+                }
+        }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun observeSelectedIdeas() {
+        viewModelScope.launch {
+            combine(
+                mutableState.map { it.selectedStatus }.distinctUntilChanged(),
+                mutableState.map { it.selectedCategory }.distinctUntilChanged(),
+                retryKey,
+            ) { status, category, _ -> status to category }
+                .flatMapLatest { (status, category) ->
+                    ideaRepository.observeIdeas(
+                        groupId = groupId,
+                        status = status,
+                        category = category.takeIf { status == IdeaStatus.IDEA },
+                    )
+                }
+                .collect { result ->
+                    mutableState.update { current ->
+                        when (result) {
+                            is AppResult.Success -> {
+                                val realtime: RealtimeItems<Idea> = result.value
+                                current.copy(
+                                    ideas = if (realtime.items.isEmpty()) {
+                                        LoadState.Empty(
+                                            when {
+                                                current.selectedStatus == IdeaStatus.IDEA &&
+                                                    current.selectedCategory != null ->
+                                                    "这个分类还没有想法"
+                                                current.selectedStatus == IdeaStatus.IDEA ->
+                                                    "还没有灵感，记下大家下次想做的事吧。"
+                                                current.selectedStatus == IdeaStatus.SCHEDULED ->
+                                                    "还没有安排，从想法里挑一个定下来。"
+                                                else -> "完成的活动会留在这里。"
+                                            },
+                                        )
+                                    } else {
+                                        LoadState.Content(
+                                            realtime.items,
+                                            realtime.hasPendingWrites,
+                                        )
+                                    },
+                                    isFromCache = realtime.isFromCache,
+                                    isRefreshing = false,
+                                )
+                            }
+                            is AppResult.Failure -> current.copy(
+                                ideas = LoadState.Error(
+                                    result.error,
+                                    result.error != AppError.PERMISSION_DENIED,
+                                ),
+                                isRefreshing = false,
+                            )
+                        }
+                    }
+                }
+        }
+    }
 }
 
 data class MembersUiState(

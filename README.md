@@ -4,8 +4,9 @@
 
 ## 当前状态
 
-M0“项目骨架”、M1“账号与资料”和 M2“小组与邀请”已经完成。开发进度见
-[PROGRESS.md](./PROGRESS.md)，产品和技术设计见 [docs/README.md](./docs/README.md)。
+M0“项目骨架”、M1“账号与资料”和 M2“小组与邀请”已经完成；M3“想法、表态与
+评论”已完成本地验收，等待远端 CI。开发进度见 [PROGRESS.md](./PROGRESS.md)，
+产品和技术设计见 [docs/README.md](./docs/README.md)。
 
 ## 工程组成
 
@@ -75,3 +76,8 @@ npm run test:rules
 `.secret.local` 只保存本地邀请凭证派生密钥并已被 Git 忽略。Emulator 使用本地演示
 项目 `demo-nextlist`，不会连接生产 Firebase 资源。Functions 集成测试也会注入独立
 的测试密钥，不依赖本机文件。
+
+M3 想法封面使用系统 Photo Picker，不需要相册权限。客户端会修正 EXIF 方向、限制
+尺寸、重新编码为 WebP 并移除原始元数据；Storage Emulator 规则将封面限制为
+`groups/{groupId}/ideas/{ideaId}/cover/{fileId}.webp` 且不超过 2 MB。纯文本想法、
+表态和评论可进入 Firestore 离线队列，图片上传必须联网。

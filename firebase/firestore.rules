@@ -31,6 +31,261 @@ service cloud.firestore {
         && resource.data.userId == request.auth.uid;
     }
 
+    function isAdmin(groupId) {
+      return isActiveMember(groupId)
+        && get(memberPath(groupId, request.auth.uid)).data.role == "admin";
+    }
+
+    function currentProfileSnapshot(groupId) {
+      return get(memberPath(groupId, request.auth.uid)).data.profileSnapshot;
+    }
+
+    function validSnapshot(value) {
+      return value is map
+        && value.keys().hasAll(["nickname", "avatarPath"])
+        && value.keys().hasOnly(["nickname", "avatarPath"])
+        && value.nickname is string
+        && value.nickname.size() >= 2
+        && value.nickname.size() <= 20
+        && (value.avatarPath == null || value.avatarPath is string);
+    }
+
+    function validCategory(value) {
+      return value in [
+        "place",
+        "restaurant",
+        "ktv_song",
+        "movie",
+        "activity",
+        "other"
+      ];
+    }
+
+    function validIdeaStatus(value) {
+      return value in ["idea", "scheduled", "completed"];
+    }
+
+    function validOptionalString(value, maxLength) {
+      return value == null || (value is string && value.size() <= maxLength);
+    }
+
+    function validMedia(groupId, ideaId, value) {
+      return value == null
+        || (
+          value is map
+          && value.keys().hasAll([
+            "storagePath",
+            "mimeType",
+            "width",
+            "height",
+            "byteSize"
+          ])
+          && value.keys().hasOnly([
+            "storagePath",
+            "mimeType",
+            "width",
+            "height",
+            "byteSize"
+          ])
+          && value.storagePath is string
+          && value.storagePath.matches(
+            '^groups/' + groupId + '/ideas/' + ideaId
+              + '/cover/[A-Za-z0-9_-]+[.]webp$'
+          )
+          && value.mimeType == "image/webp"
+          && value.width is int
+          && value.width > 0
+          && value.width <= 4096
+          && value.height is int
+          && value.height > 0
+          && value.height <= 4096
+          && value.byteSize is int
+          && value.byteSize > 0
+          && value.byteSize <= 2 * 1024 * 1024
+        );
+    }
+
+    function validReactionCounts(value) {
+      return value is map
+        && value.keys().hasAll(["want", "ok", "notInterested"])
+        && value.keys().hasOnly(["want", "ok", "notInterested"])
+        && value.want is int
+        && value.want >= 0
+        && value.ok is int
+        && value.ok >= 0
+        && value.notInterested is int
+        && value.notInterested >= 0;
+    }
+
+    function validRsvpCounts(value) {
+      return value is map
+        && value.keys().hasAll(["going", "maybe", "notGoing"])
+        && value.keys().hasOnly(["going", "maybe", "notGoing"])
+        && value.going is int
+        && value.going >= 0
+        && value.maybe is int
+        && value.maybe >= 0
+        && value.notGoing is int
+        && value.notGoing >= 0;
+    }
+
+    function validIdeaShape(groupId, ideaId, value) {
+      return value.keys().hasAll([
+          "groupId",
+          "title",
+          "category",
+          "note",
+          "media",
+          "locationOrLink",
+          "createdBy",
+          "creatorSnapshot",
+          "status",
+          "schedule",
+          "completion",
+          "reactionCounts",
+          "rsvpCounts",
+          "commentCount",
+          "reminderClaimedAt",
+          "reminderSentAt",
+          "reminderSkippedReason",
+          "lastModifiedBy",
+          "createdAt",
+          "updatedAt",
+          "isDeleted",
+          "deletedAt",
+          "deletedBy",
+          "schemaVersion"
+        ])
+        && value.keys().hasOnly([
+          "groupId",
+          "title",
+          "category",
+          "note",
+          "media",
+          "locationOrLink",
+          "createdBy",
+          "creatorSnapshot",
+          "status",
+          "schedule",
+          "completion",
+          "reactionCounts",
+          "rsvpCounts",
+          "commentCount",
+          "reminderClaimedAt",
+          "reminderSentAt",
+          "reminderSkippedReason",
+          "lastModifiedBy",
+          "createdAt",
+          "updatedAt",
+          "isDeleted",
+          "deletedAt",
+          "deletedBy",
+          "schemaVersion"
+        ])
+        && value.groupId == groupId
+        && value.title is string
+        && value.title.size() >= 1
+        && value.title.size() <= 80
+        && validCategory(value.category)
+        && validOptionalString(value.note, 1000)
+        && validMedia(groupId, ideaId, value.media)
+        && validOptionalString(value.locationOrLink, 500)
+        && value.createdBy is string
+        && validSnapshot(value.creatorSnapshot)
+        && validIdeaStatus(value.status)
+        && validReactionCounts(value.reactionCounts)
+        && validRsvpCounts(value.rsvpCounts)
+        && value.commentCount is int
+        && value.commentCount >= 0
+        && value.lastModifiedBy is string
+        && value.createdAt is timestamp
+        && value.updatedAt is timestamp
+        && value.isDeleted is bool
+        && (value.deletedAt == null || value.deletedAt is timestamp)
+        && (value.deletedBy == null || value.deletedBy is string)
+        && value.schemaVersion == 1;
+    }
+
+    function parentIdeaAllowsInteraction(groupId, ideaId) {
+      let idea = get(
+        /databases/$(database)/documents/groups/$(groupId)/ideas/$(ideaId)
+      ).data;
+      return isActiveMember(groupId)
+        && idea.isDeleted == false
+        && idea.status in ["idea", "scheduled"];
+    }
+
+    function parentIdeaAllowsComment(groupId, ideaId) {
+      let idea = get(
+        /databases/$(database)/documents/groups/$(groupId)/ideas/$(ideaId)
+      ).data;
+      return isActiveMember(groupId) && idea.isDeleted == false;
+    }
+
+    function validReactionShape(groupId, ideaId, uid, value) {
+      return value.keys().hasAll([
+          "groupId",
+          "ideaId",
+          "userId",
+          "value",
+          "userSnapshot",
+          "createdAt",
+          "updatedAt",
+          "schemaVersion"
+        ])
+        && value.keys().hasOnly([
+          "groupId",
+          "ideaId",
+          "userId",
+          "value",
+          "userSnapshot",
+          "createdAt",
+          "updatedAt",
+          "schemaVersion"
+        ])
+        && value.groupId == groupId
+        && value.ideaId == ideaId
+        && value.userId == uid
+        && value.value in ["want", "ok", "not_interested"]
+        && validSnapshot(value.userSnapshot)
+        && value.createdAt is timestamp
+        && value.updatedAt is timestamp
+        && value.schemaVersion == 1;
+    }
+
+    function validCommentShape(value) {
+      return value.keys().hasAll([
+          "content",
+          "createdBy",
+          "creatorSnapshot",
+          "createdAt",
+          "isDeleted",
+          "deletedAt",
+          "deletedBy",
+          "schemaVersion"
+        ])
+        && value.keys().hasOnly([
+          "content",
+          "createdBy",
+          "creatorSnapshot",
+          "createdAt",
+          "isDeleted",
+          "deletedAt",
+          "deletedBy",
+          "schemaVersion"
+        ])
+        && value.content is string
+        && value.content.size() >= 1
+        && value.content.size() <= 500
+        && value.createdBy is string
+        && validSnapshot(value.creatorSnapshot)
+        && value.createdAt is timestamp
+        && value.isDeleted is bool
+        && (value.deletedAt == null || value.deletedAt is timestamp)
+        && (value.deletedBy == null || value.deletedBy is string)
+        && value.schemaVersion == 1;
+    }
+
     function validNickname(value) {
       return value is string && value.size() >= 2 && value.size() <= 20;
     }
@@ -163,11 +418,140 @@ service cloud.firestore {
       }
 
       match /ideas/{ideaId} {
-        allow read: if isActiveMember(groupId);
-        allow write: if false;
+        allow read: if isActiveMember(groupId) && resource.data.isDeleted == false;
+        allow create: if isActiveMember(groupId)
+          && validIdeaShape(groupId, ideaId, request.resource.data)
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.creatorSnapshot == currentProfileSnapshot(groupId)
+          && request.resource.data.status == "idea"
+          && request.resource.data.schedule == null
+          && request.resource.data.completion == null
+          && request.resource.data.reactionCounts == {
+            "want": 0,
+            "ok": 0,
+            "notInterested": 0
+          }
+          && request.resource.data.rsvpCounts == {
+            "going": 0,
+            "maybe": 0,
+            "notGoing": 0
+          }
+          && request.resource.data.commentCount == 0
+          && request.resource.data.reminderClaimedAt == null
+          && request.resource.data.reminderSentAt == null
+          && request.resource.data.reminderSkippedReason == null
+          && request.resource.data.lastModifiedBy == request.auth.uid
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.isDeleted == false
+          && request.resource.data.deletedAt == null
+          && request.resource.data.deletedBy == null;
+        allow update: if isActiveMember(groupId)
+          && validIdeaShape(groupId, ideaId, request.resource.data)
+          && (
+            (
+              resource.data.isDeleted == false
+              && request.resource.data.isDeleted == false
+              && resource.data.createdBy == request.auth.uid
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                "title",
+                "category",
+                "note",
+                "media",
+                "locationOrLink",
+                "lastModifiedBy",
+                "updatedAt"
+              ])
+              && request.resource.data.lastModifiedBy == request.auth.uid
+              && request.resource.data.updatedAt == request.time
+            )
+            || (
+              resource.data.isDeleted == false
+              && request.resource.data.isDeleted == true
+              && (
+                resource.data.createdBy == request.auth.uid
+                || isAdmin(groupId)
+              )
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                "isDeleted",
+                "deletedAt",
+                "deletedBy",
+                "lastModifiedBy",
+                "updatedAt"
+              ])
+              && request.resource.data.deletedAt == request.time
+              && request.resource.data.deletedBy == request.auth.uid
+              && request.resource.data.lastModifiedBy == request.auth.uid
+              && request.resource.data.updatedAt == request.time
+            )
+          );
+        allow delete: if false;
 
-        match /{subcollection}/{documentId} {
-          allow read: if isActiveMember(groupId);
+        match /reactions/{uid} {
+          allow read: if isActiveMember(groupId)
+            && get(
+              /databases/$(database)/documents/groups/$(groupId)/ideas/$(ideaId)
+            ).data.isDeleted == false;
+          allow create: if signedIn()
+            && request.auth.uid == uid
+            && parentIdeaAllowsInteraction(groupId, ideaId)
+            && validReactionShape(groupId, ideaId, uid, request.resource.data)
+            && request.resource.data.userSnapshot == currentProfileSnapshot(groupId)
+            && request.resource.data.createdAt == request.time
+            && request.resource.data.updatedAt == request.time;
+          allow update: if signedIn()
+            && request.auth.uid == uid
+            && parentIdeaAllowsInteraction(groupId, ideaId)
+            && validReactionShape(groupId, ideaId, uid, request.resource.data)
+            && request.resource.data.userSnapshot == currentProfileSnapshot(groupId)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              "value",
+              "userSnapshot",
+              "updatedAt"
+            ])
+            && request.resource.data.updatedAt == request.time;
+          allow delete: if signedIn()
+            && request.auth.uid == uid
+            && parentIdeaAllowsInteraction(groupId, ideaId);
+        }
+
+        match /comments/{commentId} {
+          allow read: if isActiveMember(groupId)
+            && get(
+              /databases/$(database)/documents/groups/$(groupId)/ideas/$(ideaId)
+            ).data.isDeleted == false
+            && resource.data.isDeleted == false;
+          allow create: if parentIdeaAllowsComment(groupId, ideaId)
+            && validCommentShape(request.resource.data)
+            && request.resource.data.createdBy == request.auth.uid
+            && request.resource.data.creatorSnapshot == currentProfileSnapshot(groupId)
+            && request.resource.data.createdAt == request.time
+            && request.resource.data.isDeleted == false
+            && request.resource.data.deletedAt == null
+            && request.resource.data.deletedBy == null;
+          allow update: if isActiveMember(groupId)
+            && validCommentShape(request.resource.data)
+            && resource.data.isDeleted == false
+            && request.resource.data.isDeleted == true
+            && (
+              resource.data.createdBy == request.auth.uid
+              || isAdmin(groupId)
+            )
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              "isDeleted",
+              "deletedAt",
+              "deletedBy"
+            ])
+            && request.resource.data.deletedAt == request.time
+            && request.resource.data.deletedBy == request.auth.uid;
+          allow delete: if false;
+        }
+
+        match /rsvps/{uid} {
+          allow read: if isActiveMember(groupId)
+            && get(
+              /databases/$(database)/documents/groups/$(groupId)/ideas/$(ideaId)
+            ).data.isDeleted == false;
           allow write: if false;
         }
       }

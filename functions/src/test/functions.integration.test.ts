@@ -25,7 +25,11 @@ import {
   initializeApp as initializeAdminApp,
 } from "firebase-admin/app";
 import {getAuth as getAdminAuth} from "firebase-admin/auth";
-import {getFirestore} from "firebase-admin/firestore";
+import {getFirestore, Timestamp} from "firebase-admin/firestore";
+import {
+  maintainCommentCount,
+  maintainReactionCounts,
+} from "../ideas/aggregates";
 
 const projectId = "demo-nextlist";
 const clients: TestClient[] = [];
@@ -39,7 +43,7 @@ interface TestClient {
 }
 
 before(() => {
-  adminApp = initializeAdminApp({projectId}, "nextlist-functions-integration");
+  adminApp = initializeAdminApp({projectId});
 });
 
 after(async () => {
@@ -374,4 +378,220 @@ test("M2 callable transactions preserve membership and role invariants", async (
     call(users[2], "getOrCreateInvite", {groupId: created.groupId}),
     "GROUP_DISSOLVED",
   );
+});
+
+test("M3 triggers keep idea reaction and comment aggregates exact", async () => {
+  const owner = await createClient(20);
+  const member = await createClient(21);
+  const created = await call<{groupId: string}>(owner, "createGroup", {
+    name: "M3 实时小组",
+    requestId: "m3-create-group-request",
+  });
+  const invite = await call<{token: string}>(
+    owner,
+    "getOrCreateInvite",
+    {groupId: created.groupId},
+  );
+  await call(member, "acceptInvite", {kind: "token", value: invite.token});
+
+  const database = getFirestore(adminApp);
+  const groupRef = database.collection("groups").doc(created.groupId);
+  const ideaRef = groupRef.collection("ideas").doc("m3-idea-1");
+  const ownerProfile = {
+    nickname: "成员20",
+    avatarPath: null,
+  };
+  const memberProfile = {
+    nickname: "成员21",
+    avatarPath: null,
+  };
+  const now = Timestamp.now();
+  await ideaRef.set({
+    groupId: created.groupId,
+    title: "去植物园",
+    category: "place",
+    note: null,
+    media: null,
+    locationOrLink: null,
+    createdBy: owner.uid,
+    creatorSnapshot: ownerProfile,
+    status: "idea",
+    schedule: null,
+    completion: null,
+    reactionCounts: {want: 0, ok: 0, notInterested: 0},
+    rsvpCounts: {going: 0, maybe: 0, notGoing: 0},
+    commentCount: 0,
+    reminderClaimedAt: null,
+    reminderSentAt: null,
+    reminderSkippedReason: null,
+    lastModifiedBy: owner.uid,
+    createdAt: now,
+    updatedAt: now,
+    isDeleted: false,
+    deletedAt: null,
+    deletedBy: null,
+    schemaVersion: 1,
+  });
+  await waitFor(async () => (await groupRef.get()).get("ideaCount") === 1);
+
+  const ownerReaction = ideaRef.collection("reactions").doc(owner.uid);
+  const memberReaction = ideaRef.collection("reactions").doc(member.uid);
+  await Promise.all([
+    ownerReaction.set({
+      groupId: created.groupId,
+      ideaId: ideaRef.id,
+      userId: owner.uid,
+      value: "want",
+      userSnapshot: ownerProfile,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+      schemaVersion: 1,
+    }),
+    memberReaction.set({
+      groupId: created.groupId,
+      ideaId: ideaRef.id,
+      userId: member.uid,
+      value: "want",
+      userSnapshot: memberProfile,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+      schemaVersion: 1,
+    }),
+  ]);
+  await waitFor(async () => {
+    const counts = (await ideaRef.get()).get("reactionCounts");
+    return counts?.want === 2 && counts?.ok === 0;
+  });
+
+  await Promise.all([
+    ownerReaction.update({value: "ok", updatedAt: Timestamp.now()}),
+    memberReaction.delete(),
+  ]);
+  await waitFor(async () => {
+    const counts = (await ideaRef.get()).get("reactionCounts");
+    return counts?.want === 0 && counts?.ok === 1 && counts?.notInterested === 0;
+  });
+  const duplicateReactionEvent = {
+    id: "m3-duplicate-reaction-event",
+    params: {
+      groupId: created.groupId,
+      ideaId: ideaRef.id,
+      uid: owner.uid,
+    },
+  } as unknown as Parameters<typeof maintainReactionCounts>[0];
+  await Promise.all([
+    maintainReactionCounts(duplicateReactionEvent),
+    maintainReactionCounts(duplicateReactionEvent),
+  ]);
+  assert.equal(
+    (
+      await database.collection("functionEvents")
+        .doc("maintainReactionCounts_m3-duplicate-reaction-event")
+        .get()
+    ).exists,
+    true,
+  );
+  assert.deepEqual(
+    (await ideaRef.get()).get("reactionCounts"),
+    {want: 0, ok: 1, notInterested: 0},
+  );
+
+  const comments = ideaRef.collection("comments");
+  const firstComment = comments.doc("comment-1");
+  await Promise.all([
+    firstComment.set({
+      content: "周六一起去",
+      createdBy: member.uid,
+      creatorSnapshot: memberProfile,
+      createdAt: Timestamp.now(),
+      isDeleted: false,
+      deletedAt: null,
+      deletedBy: null,
+      schemaVersion: 1,
+    }),
+    comments.doc("comment-2").set({
+      content: "记得带水",
+      createdBy: owner.uid,
+      creatorSnapshot: ownerProfile,
+      createdAt: Timestamp.now(),
+      isDeleted: false,
+      deletedAt: null,
+      deletedBy: null,
+      schemaVersion: 1,
+    }),
+  ]);
+  await waitFor(async () => (await ideaRef.get()).get("commentCount") === 2);
+  await firstComment.update({
+    isDeleted: true,
+    deletedAt: Timestamp.now(),
+    deletedBy: member.uid,
+  });
+  await waitFor(async () => (await ideaRef.get()).get("commentCount") === 1);
+  const duplicateCommentEvent = {
+    id: "m3-duplicate-comment-event",
+    params: {
+      groupId: created.groupId,
+      ideaId: ideaRef.id,
+      commentId: firstComment.id,
+    },
+  } as unknown as Parameters<typeof maintainCommentCount>[0];
+  await Promise.all([
+    maintainCommentCount(duplicateCommentEvent),
+    maintainCommentCount(duplicateCommentEvent),
+  ]);
+  assert.equal(
+    (
+      await database.collection("functionEvents")
+        .doc("maintainCommentCount_m3-duplicate-comment-event")
+        .get()
+    ).exists,
+    true,
+  );
+  assert.equal((await ideaRef.get()).get("commentCount"), 1);
+
+  await memberReaction.set({
+    groupId: created.groupId,
+    ideaId: ideaRef.id,
+    userId: member.uid,
+    value: "not_interested",
+    userSnapshot: memberProfile,
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+    schemaVersion: 1,
+  });
+  await waitFor(async () => {
+    return (await ideaRef.get()).get("reactionCounts.notInterested") === 1;
+  });
+  await call(owner, "removeMember", {
+    groupId: created.groupId,
+    userId: member.uid,
+  });
+  await waitFor(async () => !(await memberReaction.get()).exists);
+  await waitFor(async () => {
+    const counts = (await ideaRef.get()).get("reactionCounts");
+    return counts?.want === 0 && counts?.ok === 1 && counts?.notInterested === 0;
+  });
+
+  const ownerFeed = await database.collection("users")
+    .doc(owner.uid)
+    .collection("feed")
+    .get();
+  const memberFeed = await database.collection("users")
+    .doc(member.uid)
+    .collection("feed")
+    .get();
+  assert.equal(ownerFeed.size, 0);
+  assert.equal(memberFeed.size, 0);
+
+  await ideaRef.update({
+    isDeleted: true,
+    deletedAt: Timestamp.now(),
+    deletedBy: owner.uid,
+    lastModifiedBy: owner.uid,
+    updatedAt: Timestamp.now(),
+  });
+  await waitFor(async () => (await groupRef.get()).get("ideaCount") === 0);
+  const finalCounts = (await ideaRef.get()).get("reactionCounts");
+  assert.deepEqual(finalCounts, {want: 0, ok: 1, notInterested: 0});
+  assert.equal((await ideaRef.get()).get("commentCount"), 1);
 });

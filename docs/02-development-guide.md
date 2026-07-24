@@ -326,16 +326,17 @@ functionEvents/{eventId}
 
 ### 7.2 客户端可直写
 
-为了实时和离线体验，以下操作在 Security Rules 保护下直写：
+为了实时和离线体验，以下已实现操作在 Security Rules 保护下直写：
 
 - 创建、编辑、软删除想法。
 - 设置想法表态。
 - 添加、软删除评论。
-- 安排或修改活动。
-- 设置活动参加状态。
-- 标记完成或修改完成记录。
 - 修改自己的用户资料和通知偏好。
 - 注册/刷新自己的 FCM device token。
+
+里程碑未开放的直写能力必须继续由 Rules 拒绝：M3 不允许安排/修改活动、设置
+RSVP、标记完成或修改完成记录；M5 开始前也不开放动态或通知业务写入。后续实现
+每项能力时，需要同时补齐 Android、Rules、Functions 和 Emulator 测试后再开启。
 
 服务端触发器负责动态、推送、计数和清理，不作为客户端写入成功的前置条件。
 
@@ -403,8 +404,10 @@ function unchanged(field) {
 
 更新按字段差异分三类检查：
 
-1. **内容字段**：`title/category/note/media/locationOrLink`，仅创建者或管理员可改。
-2. **活动字段**：`status/schedule/completion`，任意有效成员可按合法状态迁移修改。
+1. **内容字段**：`title/category/note/media/locationOrLink`，仅创建者可改；管理员
+   不能冒充创建者修改他人正文。
+2. **活动字段**：`status/schedule/completion`，M3 全部不可改；M4 实现后才允许
+   有效成员按合法状态迁移修改。
 3. **删除字段**：`isDeleted/deletedAt/deletedBy`，创建者或管理员可改。
 
 永远不可由客户端修改：
@@ -420,7 +423,8 @@ function unchanged(field) {
 - `reminderSkippedReason`
 - 任何服务端聚合字段
 
-状态校验至少覆盖：
+M3 中 `status/schedule/completion` 和 RSVP 聚合保持不可变；M4 开启状态流转时，
+规则与测试至少覆盖：
 
 - 新建必须为 `idea`。
 - `idea → scheduled` 必须带合法 `schedule`。
@@ -473,9 +477,12 @@ Firestore 只存 `storagePath`、宽高、字节数和 MIME 类型，不存 Base
 ### 9.3 Storage Rules
 
 - 头像仅用户本人可写。
-- 组内图片仅有效成员可读写。
-- 仅允许 `image/*`。
-- 服务端硬限制建议 10MB，客户端目标 2MB。
+- 头像仅允许本人读写 `users/{uid}/avatar/{fileId}.webp`，WebP 硬限制为小于
+  10 MB。
+- 想法封面仅允许有效成员读写
+  `groups/{groupId}/ideas/{ideaId}/cover/{fileId}.webp`。
+- 想法封面必须是 `image/webp`，Storage Rules 和客户端输出都限制为不超过
+  2 MB。
 - 删除想法或替换图片后，由 Function 异步清理旧对象。
 
 图片下载 URL 不写进公开日志。若使用长期 download token，需要在威胁模型中确认泄露风险；推荐保存 Storage path，由客户端按需解析并缓存。

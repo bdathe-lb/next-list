@@ -21,6 +21,8 @@ import kotlinx.coroutines.withContext
 data class ProcessedAvatar(
     val bytes: ByteArray,
     val contentType: String = "image/webp",
+    val width: Int,
+    val height: Int,
 )
 
 class InvalidAvatarException(val reason: String) : IllegalArgumentException(reason)
@@ -55,8 +57,14 @@ class AvatarImageProcessor @Inject constructor(
             if (candidate.size <= TARGET_MAX_BYTES) output = candidate
         }
 
+        val width = bitmap.width
+        val height = bitmap.height
         bitmap.recycle()
-        ProcessedAvatar(output ?: throw InvalidAvatarException("compressed_size"))
+        ProcessedAvatar(
+            bytes = output ?: throw InvalidAvatarException("compressed_size"),
+            width = width,
+            height = height,
+        )
     }
 
     private fun validateSource(resolver: ContentResolver, uri: Uri) {

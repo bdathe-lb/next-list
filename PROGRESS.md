@@ -4,12 +4,64 @@
 
 ## 当前阶段
 
-**M2：小组与邀请（已完成）**
+**M3：想法、表态与评论（本地验收完成，等待远端 CI）**
 
-M0“项目骨架”、M1“账号与资料”和 M2“小组与邀请”均已关闭。M2 的 Android
-实现、Functions 事务、Security Rules、单元/集成/设备测试、两台独立
-Pixel_9_Pro API 37 Emulator 烟测以及 GitHub Actions 远端验收均已完成。
-下一阶段为 M3“想法清单”。
+M0“项目骨架”、M1“账号与资料”和 M2“小组与邀请”均已关闭。M3 的 Android
+实现、可信聚合触发器、Security Rules、单元/集成/设备测试以及两台独立
+Pixel_9_Pro API 37 Emulator 烟测已经完成本地验收。本轮按要求未提交、推送或
+部署，因此 M3 尚未正式关闭，仍等待后续远端 CI。
+
+## M3 本地已完成
+
+### 想法列表与 CRUD
+
+- [x] 小组详情提供“想法 / 已安排 / 已完成”三标签；默认打开想法，并为每个标签
+  保留独立滚动位置。
+- [x] 只监听当前标签；支持加载、失败、重试、下拉刷新、通用空状态和分类无结果
+  空状态。
+- [x] 想法按创建时间倒序；提供全部、地点、餐厅、KTV 歌曲、电影、活动和其他
+  横向筛选。
+- [x] 创建、详情、编辑和软删除完整闭环；只有创建者能编辑正文，创建者或管理员
+  能删除。
+- [x] 标题、备注、地址/链接和评论按 Unicode 长度校验；提交期间防重复写入。
+- [x] 地址为 `http/https` 时使用系统安全打开，其他内容按普通文本展示。
+- [x] 表单离开前提示未保存修改；远端删除或失权时详情页自动退出。
+
+### 图片、实时与离线
+
+- [x] 使用系统 Photo Picker，不申请全量相册权限；复用图片处理器修正 EXIF 方向、
+  限制尺寸、重新编码 WebP 并移除元数据。
+- [x] 想法封面客户端输出不超过 2 MB，Storage 路径和 Rules 精确限制为
+  `groups/{groupId}/ideas/{ideaId}/cover/{fileId}.webp`。
+- [x] 图片上传要求服务端确认；上传失败保留表单，可重试或移除。替换或软删除后
+  由 Function 清理旧对象。
+- [x] 纯文本想法、表态和评论支持 Firestore 离线队列；界面区分首次加载、缓存、
+  待同步、失败和重试。
+
+### 表态与评论
+
+- [x] 有效成员可设置、覆盖、取消 `want / ok / not_interested`；三类人数实时更新。
+- [x] 成员明细底部弹层按态度分组展示成员快照，并显示未表态人数。
+- [x] 想法创建者、表态者和评论者的头像路径按需解析并在详情生命周期内缓存。
+- [x] 评论最近 50 条实时监听，服务端按时间倒序查询后在界面按正序显示。
+- [x] 评论作者或管理员可二次确认后软删除；评论不可编辑，删除正文不再可读。
+- [x] 成员退出或被移除后，Functions 清理其当前表态和 RSVP 占位数据。
+- [x] M3 不创建个人动态，也没有 FCM 发送入口；M4/M5 写入继续由 Rules 拒绝。
+
+### 聚合、安全与并发
+
+- [x] Functions 事务从真实子集合精确重算 `ideaCount / scheduledCount /
+  completedCount`、`reactionCounts` 和 `commentCount`，避免负数和增量漂移。
+- [x] 每个 CloudEvent 使用 `functionEvents` 幂等记录；重复投递、并发创建、表态
+  切换/取消及评论软删除均保持精确计数。
+- [x] Rules 校验字段白名单、固定枚举、服务端时间、当前 membership 快照和所有
+  不可变/聚合字段；非成员和已退出成员不能读取或写入。
+- [x] 普通成员不能修改或删除他人想法；管理员只能删除他人想法，不能冒充创建者
+  修改正文。
+- [x] 表态文档 ID、`userId` 和登录用户一致；评论身份与成员快照不能伪造；已删除
+  内容不能继续表态或评论。
+- [x] 仅加入当前 M3 查询和成员退出清理所需复合索引；安排、RSVP 和完成写入仍为
+  安全占位。
 
 ## M2 已完成
 
@@ -61,18 +113,36 @@ Pixel_9_Pro API 37 Emulator 烟测以及 GitHub Actions 远端验收均已完成
 
 | 检查 | 状态 | 结果 |
 | --- | --- | --- |
-| Android 单元测试 | 通过 | 23/23，校验、DTO、错误映射、加载/错误状态和防重复提交 |
+| Android 单元测试 | 通过 | 40/40，含 Unicode 校验、DTO、状态、权限、头像、重试和防重复提交 |
 | Android Lint | 通过 | 0 errors；仅保留依赖版本提示 |
-| Debug APK | 通过 | `assembleDebug`，约 19 MB |
-| Compose / Android 设备测试 | 通过 | 6/6，在两台 Pixel_9_Pro API 37 上各执行一次 |
+| Debug APK | 通过 | `assembleDebug` |
+| Compose / Android 设备测试 | 通过 | 14/14，在两台 Pixel_9_Pro API 37 上各执行一次，共 28 次通过 |
 | Functions lint/typecheck | 通过 | ESLint + TypeScript |
-| Functions 单元测试 | 通过 | 6/6，邀请加密、输入校验和限流 |
-| Functions Emulator 集成 | 通过 | 12 个账号覆盖事务、并发、幂等、权限和竞态 |
-| Firestore / Storage Rules | 通过 | 25/25 allow/deny 用例 |
-| API 37 M2 双设备烟测 | 通过 | 创建、邀请预览、加入、实时 2 人、移除与失权自动返回 |
-| GitHub Actions | 通过 | Android 与 Functions and Firebase Rules 两个 Job |
+| Functions 单元测试 | 通过 | 10/10，含 M2 基线与 M3 聚合输入/桶规则 |
+| Functions Emulator 集成 | 通过 | 2/2 场景；M2 事务基线及 M3 并发、幂等、聚合、清理 |
+| Firestore Rules | 通过 | 27/27 allow/deny 用例 |
+| Storage Rules | 通过 | 9/9 allow/deny 用例 |
+| Release APK | 通过 | `assembleRelease`，未连接 Emulator |
+| API 37 M3 双设备烟测 | 通过 | CRUD、双人表态、成员明细、评论、软删除、实时计数 |
+| GitHub Actions | 等待 | M3 尚未提交或推送；M2 最终 CI 保持通过 |
 
-### API 37 烟测明细
+### API 37 M3 烟测明细
+
+设备：两台独立 `Pixel_9_Pro`，API 37；后端：`demo-nextlist` Firebase Emulator。
+
+- A 与 B 同在一个 2 人小组；A 创建纯文本想法后，B 无需刷新即看到卡片。
+- A 修改标题后，B 实时显示新标题。
+- A 选择“想参加”、B 选择“都可以”后，两端分别显示 1 人；成员明细正确分组显示
+  两位成员，未表态为 0。
+- B 发布评论后 A 实时显示 `评论 1`；B 二次确认软删除后 A 实时回到 `评论 0`。
+- A 以创建者/管理员身份软删除想法后，两端想法列表立即为空；数据库侧
+  `groups/{groupId}.ideaCount` 回到 0。
+- 数据库侧确认两位用户的 `feed` 子集合均为 0；M3 Functions 未调用 Messaging，
+  因此普通表态没有动态或通知投递。
+- 烟测发现并修复了远端软删除导致详情监听返回 `PERMISSION_DENIED` 后未自动退出的
+  问题，并补充 ViewModel 回归测试。
+
+### API 37 M2 烟测明细
 
 设备：两台独立 `Pixel_9_Pro`，API 37；后端：`demo-nextlist` Firebase Emulator。
 
@@ -109,10 +179,15 @@ M2 远端 CI：[CI #30078762899](https://github.com/bdathe-lb/next-list/actions/
   仍是外部配置事项。
 - 邮件发件模板/域名、动态链接落地页、生产监控、隐私政策和账号注销按后续发布
   加固计划处理。
-- M2 未实现想法 CRUD、状态流转、动态或通知投递；界面仅展示 M3/M4 安全占位。
+- M3 的 Firestore/Storage Rules、复合索引和 Functions 尚未部署到真实项目；生产
+  环境还需部署后执行 App Check、Rules、图片上传和两设备预发布 smoke test。
+- M4 的安排、RSVP、随机决定和完成记录，以及 M5 的动态、通知偏好业务、FCM、
+  临近提醒和通知导航均未实现；对应客户端写入口仍关闭。
 
 ## 下一步
 
-1. 进入 M3“想法清单”，实现小组内想法 CRUD、分类、投票和权限规则。
-2. 如具备真实 Firebase 项目，配置生产密钥与 Play Integrity，并执行生产预发布
-   App Check / Rules smoke test。
+1. 按后续发布指令提交并推送 M3，等待 GitHub Actions 的 Android 与 Functions /
+   Firebase Rules 两个 Job 通过后再正式关闭 M3。
+2. 如具备真实 Firebase 项目，部署 M3 Rules、索引和 Functions，配置 Play
+   Integrity，并执行生产预发布 App Check / Rules / Storage smoke test。
+3. M3 关闭后再进入 M4“安排与完成”。

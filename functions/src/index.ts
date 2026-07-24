@@ -1,7 +1,10 @@
 import {initializeApp} from "firebase-admin/app";
 import {setGlobalOptions} from "firebase-functions/v2";
 import {onCall} from "firebase-functions/v2/https";
-import {onDocumentUpdated} from "firebase-functions/v2/firestore";
+import {
+  onDocumentUpdated,
+  onDocumentWritten,
+} from "firebase-functions/v2/firestore";
 import {createHealthPayload} from "./shared/health";
 import {
   acceptDirectInviteHandler,
@@ -19,6 +22,12 @@ import {
 } from "./groups/service";
 import {syncMembershipProfileSnapshots} from "./groups/profileSync";
 import {inviteHmacSecret} from "./groups/inviteCrypto";
+import {
+  cleanupDepartedMemberResponses,
+  maintainCommentCount,
+  maintainGroupIdeaCounts,
+  maintainReactionCounts,
+} from "./ideas/aggregates";
 
 initializeApp();
 
@@ -64,4 +73,20 @@ export const dissolveGroup = onCall(protectedCallable, dissolveGroupHandler);
 export const syncMembershipProfiles = onDocumentUpdated(
   "users/{uid}",
   syncMembershipProfileSnapshots,
+);
+export const updateGroupIdeaCounts = onDocumentWritten(
+  "groups/{groupId}/ideas/{ideaId}",
+  maintainGroupIdeaCounts,
+);
+export const updateIdeaReactionCounts = onDocumentWritten(
+  "groups/{groupId}/ideas/{ideaId}/reactions/{uid}",
+  maintainReactionCounts,
+);
+export const updateIdeaCommentCount = onDocumentWritten(
+  "groups/{groupId}/ideas/{ideaId}/comments/{commentId}",
+  maintainCommentCount,
+);
+export const cleanupMemberResponses = onDocumentUpdated(
+  "groups/{groupId}/members/{uid}",
+  cleanupDepartedMemberResponses,
 );

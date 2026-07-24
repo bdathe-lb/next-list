@@ -8,6 +8,7 @@ import {
 import {
   collection,
   collectionGroup,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -452,5 +453,314 @@ test("clients cannot accept, forge, or modify another direct invitation", async 
       status: "declined",
       respondedAt: serverTimestamp(),
     }),
+  );
+});
+
+function validIdea(overrides: Record<string, unknown> = {}) {
+  return {
+    groupId: "group-1",
+    title: "去植物园",
+    category: "place",
+    note: null,
+    media: null,
+    locationOrLink: null,
+    createdBy: "bob",
+    creatorSnapshot: {nickname: "小周", avatarPath: null},
+    status: "idea",
+    schedule: null,
+    completion: null,
+    reactionCounts: {want: 0, ok: 0, notInterested: 0},
+    rsvpCounts: {going: 0, maybe: 0, notGoing: 0},
+    commentCount: 0,
+    reminderClaimedAt: null,
+    reminderSentAt: null,
+    reminderSkippedReason: null,
+    lastModifiedBy: "bob",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    isDeleted: false,
+    deletedAt: null,
+    deletedBy: null,
+    schemaVersion: 1,
+    ...overrides,
+  };
+}
+
+function validReaction(
+  userId: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    groupId: "group-1",
+    ideaId: "idea-1",
+    userId,
+    value: "want",
+    userSnapshot: {
+      nickname: userId === "alice" ? "小林" : "小周",
+      avatarPath: null,
+    },
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    schemaVersion: 1,
+    ...overrides,
+  };
+}
+
+function validComment(
+  userId: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    content: "周六一起去吧",
+    createdBy: userId,
+    creatorSnapshot: {
+      nickname: userId === "alice" ? "小林" : "小周",
+      avatarPath: null,
+    },
+    createdAt: serverTimestamp(),
+    isDeleted: false,
+    deletedAt: null,
+    deletedBy: null,
+    schemaVersion: 1,
+    ...overrides,
+  };
+}
+
+async function seedIdea(overrides: Record<string, unknown> = {}) {
+  await seedGroup();
+  await testEnvironment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(
+      doc(context.firestore(), "groups/group-1/ideas/idea-1"),
+      validIdea(overrides),
+    );
+  });
+}
+
+test("active members can create valid ideas and query visible ideas", async () => {
+  await seedGroup();
+  const firestore = testEnvironment.authenticatedContext("bob").firestore();
+  await assertSucceeds(
+    setDoc(
+      doc(firestore, "groups/group-1/ideas/idea-1"),
+      validIdea(),
+    ),
+  );
+  const ideas = await assertSucceeds(
+    getDocs(
+      query(
+        collection(firestore, "groups/group-1/ideas"),
+        where("isDeleted", "==", false),
+      ),
+    ),
+  );
+  assert.equal(ideas.size, 1);
+});
+
+test("idea creation rejects forged snapshots aggregates and server fields", async () => {
+  await seedGroup();
+  const firestore = testEnvironment.authenticatedContext("bob").firestore();
+  const idea = doc(firestore, "groups/group-1/ideas/idea-1");
+
+  await assertFails(
+    setDoc(idea, validIdea({
+      creatorSnapshot: {nickname: "冒名", avatarPath: null},
+    })),
+  );
+  await assertFails(
+    setDoc(idea, validIdea({reactionCounts: {want: 99, ok: 0, notInterested: 0}})),
+  );
+  await assertFails(
+    setDoc(idea, validIdea({createdBy: "alice", lastModifiedBy: "alice"})),
+  );
+  await assertFails(
+    setDoc(idea, validIdea({status: "scheduled"})),
+  );
+});
+
+test("only creators edit idea text while creators and admins soft delete", async () => {
+  await seedIdea();
+  const bobFirestore = testEnvironment.authenticatedContext("bob").firestore();
+  const aliceFirestore = testEnvironment.authenticatedContext("alice").firestore();
+  const bobIdea = doc(bobFirestore, "groups/group-1/ideas/idea-1");
+  const aliceIdea = doc(aliceFirestore, "groups/group-1/ideas/idea-1");
+
+  await assertSucceeds(
+    updateDoc(bobIdea, {
+      title: "去植物园看荷花",
+      lastModifiedBy: "bob",
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  await assertFails(
+    updateDoc(aliceIdea, {
+      title: "管理员不能改正文",
+      lastModifiedBy: "alice",
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  await assertFails(
+    updateDoc(bobIdea, {
+      commentCount: 10,
+      lastModifiedBy: "bob",
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  await assertSucceeds(
+    updateDoc(aliceIdea, {
+      isDeleted: true,
+      deletedAt: serverTimestamp(),
+      deletedBy: "alice",
+      lastModifiedBy: "alice",
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  await assertFails(getDoc(aliceIdea));
+});
+
+test("non-members and removed members cannot access ideas", async () => {
+  await seedIdea();
+  const charlie = testEnvironment.authenticatedContext("charlie").firestore();
+  await assertFails(getDoc(doc(charlie, "groups/group-1/ideas/idea-1")));
+  await assertFails(
+    setDoc(
+      doc(charlie, "groups/group-1/ideas/idea-2"),
+      validIdea({createdBy: "charlie", lastModifiedBy: "charlie"}),
+    ),
+  );
+
+  await testEnvironment.withSecurityRulesDisabled(async (context) => {
+    await updateDoc(doc(context.firestore(), "groups/group-1/members/bob"), {
+      status: "removed",
+      removedAt: new Date(),
+    });
+  });
+  const removed = testEnvironment.authenticatedContext("bob").firestore();
+  await assertFails(getDoc(doc(removed, "groups/group-1/ideas/idea-1")));
+});
+
+test("members can set switch and clear only their own reaction", async () => {
+  await seedIdea();
+  const bob = testEnvironment.authenticatedContext("bob").firestore();
+  const alice = testEnvironment.authenticatedContext("alice").firestore();
+  const bobReaction = doc(
+    bob,
+    "groups/group-1/ideas/idea-1/reactions/bob",
+  );
+
+  await assertSucceeds(setDoc(bobReaction, validReaction("bob")));
+  await assertSucceeds(
+    updateDoc(bobReaction, {
+      value: "ok",
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  await assertFails(
+    setDoc(
+      doc(alice, "groups/group-1/ideas/idea-1/reactions/bob"),
+      validReaction("bob"),
+    ),
+  );
+  await assertFails(
+    updateDoc(bobReaction, {
+      userSnapshot: {nickname: "伪造昵称", avatarPath: null},
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  await assertSucceeds(deleteDoc(bobReaction));
+});
+
+test("deleted or completed ideas reject new reactions", async () => {
+  await seedIdea({isDeleted: true, deletedAt: new Date(), deletedBy: "alice"});
+  const bob = testEnvironment.authenticatedContext("bob").firestore();
+  await assertFails(
+    setDoc(
+      doc(bob, "groups/group-1/ideas/idea-1/reactions/bob"),
+      validReaction("bob"),
+    ),
+  );
+
+  await testEnvironment.withSecurityRulesDisabled(async (context) => {
+    await updateDoc(doc(context.firestore(), "groups/group-1/ideas/idea-1"), {
+      isDeleted: false,
+      deletedAt: null,
+      deletedBy: null,
+      status: "completed",
+    });
+  });
+  await assertFails(
+    setDoc(
+      doc(bob, "groups/group-1/ideas/idea-1/reactions/bob"),
+      validReaction("bob"),
+    ),
+  );
+});
+
+test("comment authors and admins can soft delete but cannot edit content", async () => {
+  await seedIdea();
+  const bob = testEnvironment.authenticatedContext("bob").firestore();
+  const alice = testEnvironment.authenticatedContext("alice").firestore();
+  const bobComment = doc(
+    bob,
+    "groups/group-1/ideas/idea-1/comments/comment-1",
+  );
+  await assertSucceeds(setDoc(bobComment, validComment("bob")));
+  await assertFails(
+    updateDoc(bobComment, {content: "修改评论"}),
+  );
+  await assertFails(
+    updateDoc(
+      doc(
+        testEnvironment.authenticatedContext("charlie").firestore(),
+        "groups/group-1/ideas/idea-1/comments/comment-1",
+      ),
+      {
+        isDeleted: true,
+        deletedAt: serverTimestamp(),
+        deletedBy: "charlie",
+      },
+    ),
+  );
+  await assertSucceeds(
+    updateDoc(
+      doc(alice, "groups/group-1/ideas/idea-1/comments/comment-1"),
+      {
+        isDeleted: true,
+        deletedAt: serverTimestamp(),
+        deletedBy: "alice",
+      },
+    ),
+  );
+  await assertFails(getDoc(doc(alice, "groups/group-1/ideas/idea-1/comments/comment-1")));
+});
+
+test("comments reject forged authors snapshots aggregates and deleted parents", async () => {
+  await seedIdea();
+  const bob = testEnvironment.authenticatedContext("bob").firestore();
+  await assertFails(
+    setDoc(
+      doc(bob, "groups/group-1/ideas/idea-1/comments/forged-1"),
+      validComment("alice"),
+    ),
+  );
+  await assertFails(
+    setDoc(
+      doc(bob, "groups/group-1/ideas/idea-1/comments/forged-2"),
+      validComment("bob", {
+        creatorSnapshot: {nickname: "冒名", avatarPath: null},
+      }),
+    ),
+  );
+  await testEnvironment.withSecurityRulesDisabled(async (context) => {
+    await updateDoc(doc(context.firestore(), "groups/group-1/ideas/idea-1"), {
+      isDeleted: true,
+      deletedAt: new Date(),
+      deletedBy: "alice",
+    });
+  });
+  await assertFails(
+    setDoc(
+      doc(bob, "groups/group-1/ideas/idea-1/comments/after-delete"),
+      validComment("bob"),
+    ),
   );
 });

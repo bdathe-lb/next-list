@@ -48,6 +48,8 @@ import com.example.nextlist.feature.groups.JoinCodeScreen
 import com.example.nextlist.feature.groups.JoinGroupRoute
 import com.example.nextlist.feature.groups.MembersRoute
 import com.example.nextlist.feature.groups.PendingInviteViewModel
+import com.example.nextlist.feature.ideas.IdeaDetailRoute
+import com.example.nextlist.feature.ideas.IdeaFormRoute
 import com.example.nextlist.feature.profile.CompleteProfileRoute
 import com.example.nextlist.feature.profile.EditProfileRoute
 import com.example.nextlist.feature.profile.ProfileRoute
@@ -61,6 +63,9 @@ private const val GROUP_DETAIL_ROUTE = "group/{groupId}"
 private const val GROUP_MEMBERS_ROUTE = "group/{groupId}/members"
 private const val GROUP_INVITE_ROUTE = "group/{groupId}/invite"
 private const val GROUP_SETTINGS_ROUTE = "group/{groupId}/settings"
+private const val NEW_IDEA_ROUTE = "group/{groupId}/idea/new"
+private const val IDEA_DETAIL_ROUTE = "group/{groupId}/idea/{ideaId}"
+private const val EDIT_IDEA_ROUTE = "group/{groupId}/idea/{ideaId}/edit"
 
 @Composable
 fun NextListAppContent(
@@ -242,7 +247,59 @@ private fun SignedInApp(
                     onSettings = { groupId ->
                         navController.navigate("group/${Uri.encode(groupId)}/settings")
                     },
+                    onAddIdea = { groupId ->
+                        navController.navigate("group/${Uri.encode(groupId)}/idea/new")
+                    },
+                    onOpenIdea = { groupId, ideaId ->
+                        navController.navigate(
+                            "group/${Uri.encode(groupId)}/idea/${Uri.encode(ideaId)}",
+                        )
+                    },
                     onAccessLost = ::showMessageAndReturn,
+                )
+            }
+            composable(
+                route = NEW_IDEA_ROUTE,
+                arguments = listOf(navArgument("groupId") { type = NavType.StringType }),
+            ) {
+                IdeaFormRoute(
+                    onBack = { navController.popBackStack() },
+                    onSaved = { ideaId ->
+                        val groupId = it.arguments?.getString("groupId").orEmpty()
+                        navController.navigate(
+                            "group/${Uri.encode(groupId)}/idea/${Uri.encode(ideaId)}",
+                        ) {
+                            popUpTo(NEW_IDEA_ROUTE) { inclusive = true }
+                        }
+                    },
+                )
+            }
+            composable(
+                route = IDEA_DETAIL_ROUTE,
+                arguments = listOf(
+                    navArgument("groupId") { type = NavType.StringType },
+                    navArgument("ideaId") { type = NavType.StringType },
+                ),
+            ) {
+                IdeaDetailRoute(
+                    onBack = { navController.popBackStack() },
+                    onEdit = { groupId, ideaId ->
+                        navController.navigate(
+                            "group/${Uri.encode(groupId)}/idea/${Uri.encode(ideaId)}/edit",
+                        )
+                    },
+                )
+            }
+            composable(
+                route = EDIT_IDEA_ROUTE,
+                arguments = listOf(
+                    navArgument("groupId") { type = NavType.StringType },
+                    navArgument("ideaId") { type = NavType.StringType },
+                ),
+            ) {
+                IdeaFormRoute(
+                    onBack = { navController.popBackStack() },
+                    onSaved = { navController.popBackStack() },
                 )
             }
             composable(

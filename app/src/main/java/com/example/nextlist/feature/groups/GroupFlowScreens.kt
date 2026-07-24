@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,7 +16,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -24,20 +27,22 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -59,9 +64,13 @@ import com.example.nextlist.domain.model.GroupMember
 import com.example.nextlist.domain.model.GroupRole
 import com.example.nextlist.domain.model.InviteCredentials
 import com.example.nextlist.domain.model.InvitePreview
+import com.example.nextlist.domain.model.Idea
+import com.example.nextlist.domain.model.IdeaCategory
+import com.example.nextlist.domain.model.IdeaStatus
 import com.example.nextlist.domain.model.MemberSnapshot
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.Instant
 
 @Composable
 fun CreateGroupRoute(
@@ -347,6 +356,8 @@ fun GroupDetailRoute(
     onMembers: (String) -> Unit,
     onInvite: (String) -> Unit,
     onSettings: (String) -> Unit,
+    onAddIdea: (String) -> Unit,
+    onOpenIdea: (String, String) -> Unit,
     onAccessLost: (String) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: GroupDetailViewModel = hiltViewModel(),
@@ -361,6 +372,11 @@ fun GroupDetailRoute(
         onMembers = onMembers,
         onInvite = onInvite,
         onSettings = onSettings,
+        onAddIdea = onAddIdea,
+        onOpenIdea = onOpenIdea,
+        onSelectStatus = viewModel::selectStatus,
+        onSelectCategory = viewModel::selectCategory,
+        onRefresh = viewModel::refresh,
         modifier = modifier,
     )
 }
@@ -373,9 +389,13 @@ fun GroupDetailScreen(
     onMembers: (String) -> Unit,
     onInvite: (String) -> Unit,
     onSettings: (String) -> Unit,
+    onAddIdea: (String) -> Unit,
+    onOpenIdea: (String, String) -> Unit,
+    onSelectStatus: (IdeaStatus) -> Unit,
+    onSelectCategory: (IdeaCategory?) -> Unit,
+    onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     val group = (state.group as? LoadState.Content)?.data
     Scaffold(
         modifier = modifier,
@@ -394,6 +414,15 @@ fun GroupDetailScreen(
                     }
                 },
             )
+        },
+        floatingActionButton = {
+            if (group != null) {
+                ExtendedFloatingActionButton(
+                    onClick = { onAddIdea(group.id) },
+                    text = { Text("添加想法") },
+                    icon = { Text("+", style = MaterialTheme.typography.titleLarge) },
+                )
+            }
         },
     ) { padding ->
         when (val groupState = state.group) {
@@ -422,35 +451,192 @@ fun GroupDetailScreen(
                         Text("${groupState.data.memberCount} 位成员")
                     }
                 }
-                TabRow(selectedTabIndex = selectedTab) {
-                    listOf("想法", "已安排", "已完成").forEachIndexed { index, title ->
+                val statuses = IdeaStatus.entries
+                val selectedTab = statuses.indexOf(state.selectedStatus)
+                PrimaryTabRow(selectedTabIndex = selectedTab) {
+                    statuses.forEach { status ->
                         Tab(
-                            selected = selectedTab == index,
-                            onClick = { selectedTab = index },
-                            text = { Text(title) },
+                            selected = state.selectedStatus == status,
+                            onClick = { onSelectStatus(status) },
+                            text = { Text(status.label) },
                         )
                     }
                 }
-                val emptyTexts = listOf(
-                    "还没有灵感，记下大家下次想做的事吧。",
-                    "还没有安排，从想法里挑一个定下来。",
-                    "完成的活动会留在这里。",
+                if (state.selectedStatus == IdeaStatus.IDEA) {
+                    IdeaCategoryFilters(
+                        selected = state.selectedCategory,
+                        onSelected = onSelectCategory,
+                    )
+                }
+                IdeaListContent(
+                    state = state,
+                    onRefresh = onRefresh,
+                    onOpenIdea = { idea -> onOpenIdea(groupState.data.id, idea.id) },
+                    modifier = Modifier.weight(1f),
                 )
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    Text(emptyTexts[selectedTab])
+            }
+        }
+    }
+}
+
+@Composable
+private fun IdeaCategoryFilters(
+    selected: IdeaCategory?,
+    onSelected: (IdeaCategory?) -> Unit,
+) {
+    LazyRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp),
+    ) {
+        item {
+            FilterChip(
+                selected = selected == null,
+                onClick = { onSelected(null) },
+                label = { Text("全部") },
+            )
+        }
+        items(IdeaCategory.entries, key = IdeaCategory::wireValue) { category ->
+            FilterChip(
+                selected = selected == category,
+                onClick = { onSelected(category) },
+                label = { Text("${category.glyph} ${category.label}") },
+            )
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun IdeaListContent(
+    state: GroupDetailUiState,
+    onRefresh: () -> Unit,
+    onOpenIdea: (Idea) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val ideaListState = rememberLazyListState()
+    val scheduledListState = rememberLazyListState()
+    val completedListState = rememberLazyListState()
+    val listState = when (state.selectedStatus) {
+        IdeaStatus.IDEA -> ideaListState
+        IdeaStatus.SCHEDULED -> scheduledListState
+        IdeaStatus.COMPLETED -> completedListState
+    }
+    PullToRefreshBox(
+        isRefreshing = state.isRefreshing,
+        onRefresh = onRefresh,
+        modifier = modifier,
+    ) {
+        when (val ideas = state.ideas) {
+            LoadState.Loading -> CenteredProgress()
+            is LoadState.Empty -> Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(ideas.reason, modifier = Modifier.padding(horizontal = 32.dp))
+                if (state.isFromCache) {
                     Text(
-                        "想法与活动能力将在 M3/M4 开放",
+                        "当前显示离线缓存",
                         modifier = Modifier.padding(top = 8.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
+            is LoadState.Error -> ErrorState(
+                message = ideas.kind.toUserMessage(),
+                onRetry = if (ideas.canRetry) onRefresh else null,
+            )
+            is LoadState.Content -> LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    start = 16.dp,
+                    top = 8.dp,
+                    end = 16.dp,
+                    bottom = 96.dp,
+                ),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                if (ideas.hasPendingWrites || state.isFromCache) {
+                    item("sync-state") {
+                        Text(
+                            if (ideas.hasPendingWrites) "等待同步" else "离线缓存",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
+                }
+                items(ideas.data, key = Idea::id) { idea ->
+                    IdeaCard(idea = idea, onClick = { onOpenIdea(idea) })
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun IdeaCard(
+    idea: Idea,
+    onClick: () -> Unit,
+) {
+    OutlinedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "${idea.category.glyph} ${idea.category.label}",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    idea.status.label,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+            Text(
+                idea.title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                "${idea.creatorSnapshot.nickname} · ${formatIdeaTime(idea.createdAt)}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Row {
+                Text(
+                    "${idea.reactionCounts.want} 人想参加",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (idea.hasPendingWrites) {
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        "等待同步",
+                        color = MaterialTheme.colorScheme.secondary,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun formatIdeaTime(instant: Instant?): String {
+    if (instant == null) return "等待同步"
+    return DateTimeFormatter.ofPattern("M月d日 HH:mm")
+        .withZone(ZoneId.systemDefault())
+        .format(instant)
 }
 
 @Composable
