@@ -5,6 +5,7 @@ import {
   onDocumentUpdated,
   onDocumentWritten,
 } from "firebase-functions/v2/firestore";
+import {onSchedule} from "firebase-functions/v2/scheduler";
 import {createHealthPayload} from "./shared/health";
 import {
   acceptDirectInviteHandler,
@@ -29,6 +30,12 @@ import {
   maintainReactionCounts,
   maintainRsvpCounts,
 } from "./ideas/aggregates";
+import {
+  processCommentActivity,
+  processDirectInvitation,
+  processIdeaActivity,
+} from "./notifications/service";
+import {sendUpcomingReminders} from "./notifications/reminders";
 
 initializeApp();
 
@@ -94,4 +101,33 @@ export const updateIdeaCommentCount = onDocumentWritten(
 export const cleanupMemberResponses = onDocumentUpdated(
   "groups/{groupId}/members/{uid}",
   cleanupDepartedMemberResponses,
+);
+export const createIdeaActivity = onDocumentWritten(
+  {
+    document: "groups/{groupId}/ideas/{ideaId}",
+    retry: true,
+  },
+  processIdeaActivity,
+);
+export const createCommentActivity = onDocumentWritten(
+  {
+    document: "groups/{groupId}/ideas/{ideaId}/comments/{commentId}",
+    retry: true,
+  },
+  processCommentActivity,
+);
+export const createDirectInvitationActivity = onDocumentWritten(
+  {
+    document: "users/{uid}/invitations/{invitationId}",
+    retry: true,
+  },
+  processDirectInvitation,
+);
+export const upcomingActivityReminders = onSchedule(
+  {
+    schedule: "every 5 minutes",
+    timeZone: "Asia/Shanghai",
+    retryCount: 3,
+  },
+  () => sendUpcomingReminders(),
 );

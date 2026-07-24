@@ -264,12 +264,15 @@ fun IdeaDetailRoute(
     onEdit: (String, String) -> Unit,
     onSchedule: (String, String) -> Unit,
     onComplete: (String, String) -> Unit,
+    onAccessLost: (String) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: IdeaDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(state.ideaDeleted) {
-        if (state.ideaDeleted) onBack()
+        if (state.ideaDeleted) {
+            onAccessLost("内容已删除或你已无权访问")
+        }
     }
     IdeaDetailScreen(
         state = state,

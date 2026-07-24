@@ -5,8 +5,8 @@
 ## 当前状态
 
 M0“项目骨架”、M1“账号与资料”、M2“小组与邀请”、M3“想法、表态与评论”和
-M4“安排、随机与完成”已经完成。下一阶段为 M5“动态与通知”；真实 Firebase
-环境部署与预发布验证仍作为外部配置事项跟踪。开发进度见
+M4“安排、随机与完成”已经完成。M5“动态与通知”已完成本地实现与验收，等待
+远端 CI；真实 Firebase 环境部署与预发布验证仍作为外部配置事项跟踪。开发进度见
 [PROGRESS.md](./PROGRESS.md)，产品和技术设计见 [docs/README.md](./docs/README.md)。
 
 ## 工程组成
@@ -83,3 +83,29 @@ EXIF 方向、限制尺寸、重新编码为 WebP 并移除原始元数据；Sto
 图片精确限制在各自的 `cover` 或 `completion` 路径且不超过 2 MB。纯文本想法、
 表态、评论和 RSVP 可进入 Firestore 离线队列；安排、随机候选读取、完成记录与
 图片上传需要联网。
+
+## 动态与通知
+
+- “动态”实时监听当前用户私有 Feed，首屏 30 条并支持游标分页、下拉刷新、单条
+  已读和全部已读。Feed 由 Functions 按确定性 ID 写入，客户端不能创建或删除，
+  `expiresAt` 通过 Firestore TTL 保留 90 天。
+- “我的 → 通知设置”管理小组邀请、新安排、临近提醒和想法评论四类推送；关闭
+  推送不会影响应用内动态。Android 13+ 在该页面申请通知权限，拒绝不影响应用使用。
+- 每次登录或 FCM token 刷新时注册安装范围随机 `deviceId`；退出时尽力清理当前
+  设备，超时或失败不会阻塞退出。通知 data payload 只包含受限类型与目标 ID，
+  评论正文不会进入 payload 或锁屏文案。
+- 临近提醒 Function 每 5 分钟查询未来 30 分钟内的活动；本地 Functions 集成测试
+  直接调用提醒处理器并注入发送适配器。Firebase Emulator 不提供真实 FCM 投递，
+  且未启动 Pub/Sub 时不会自动触发 Scheduled Function，因此真实推送、系统托盘
+  行为和 Cloud Scheduler 触发仍需在 Firebase 开发项目验证。
+
+本地 M5 验证：
+
+```bash
+./gradlew testDebugUnitTest lintDebug assembleDebug
+./gradlew connectedDebugAndroidTest
+npm --prefix functions run check
+npm run test:functions:integration
+npm run test:rules
+./gradlew assembleRelease
+```

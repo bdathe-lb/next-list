@@ -4,6 +4,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -175,6 +176,7 @@ fun CompleteProfileScreen(
 fun ProfileRoute(
     session: AccountSession.SignedIn,
     onEditProfile: () -> Unit,
+    onNotificationSettings: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
@@ -186,6 +188,7 @@ fun ProfileRoute(
         session = session,
         state = state,
         onEditProfile = onEditProfile,
+        onNotificationSettings = onNotificationSettings,
         onSendVerification = viewModel::sendVerificationEmail,
         onRefreshVerification = { viewModel.refreshVerificationStatus(session) },
         onSignOut = viewModel::signOut,
@@ -198,6 +201,7 @@ fun ProfileScreen(
     session: AccountSession.SignedIn,
     state: ProfileUiState,
     onEditProfile: () -> Unit,
+    onNotificationSettings: () -> Unit,
     onSendVerification: () -> Unit,
     onRefreshVerification: () -> Unit,
     onSignOut: () -> Unit,
@@ -264,7 +268,11 @@ fun ProfileScreen(
 
         OutlinedCard(modifier = Modifier.fillMaxWidth()) {
             Column {
-                SettingsRow(title = "通知设置", supporting = "将在 M5 开放")
+                SettingsRow(
+                    title = "通知设置",
+                    supporting = "管理四类推送",
+                    onClick = onNotificationSettings,
+                )
                 HorizontalDivider()
                 SettingsRow(title = "关于应用", supporting = "下次 · NextList 0.1.0")
             }
@@ -529,10 +537,15 @@ private fun VerificationCard(
 }
 
 @Composable
-private fun SettingsRow(title: String, supporting: String) {
+private fun SettingsRow(
+    title: String,
+    supporting: String,
+    onClick: (() -> Unit)? = null,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(16.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,

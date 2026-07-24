@@ -201,6 +201,141 @@ test("email verification can only be synced from the auth token", async () => {
   );
 });
 
+function validDevice(overrides: Record<string, unknown> = {}) {
+  return {
+    token: "fcm-token-for-rules-test",
+    platform: "android",
+    appVersion: "0.1.0",
+    locale: "zh-CN",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    ...overrides,
+  };
+}
+
+test("device documents are owner-only and strictly validated", async () => {
+  const alice = testEnvironment.authenticatedContext("alice").firestore();
+  const bob = testEnvironment.authenticatedContext("bob").firestore();
+  const device = doc(alice, "users/alice/devices/installation-id-1234");
+  await assertSucceeds(setDoc(device, validDevice()));
+  await assertSucceeds(getDoc(device));
+  await assertFails(getDoc(doc(bob, "users/alice/devices/installation-id-1234")));
+  await assertFails(
+    setDoc(
+      doc(alice, "users/alice/devices/short"),
+      validDevice(),
+    ),
+  );
+  await assertFails(
+    setDoc(
+      doc(alice, "users/alice/devices/installation-id-5678"),
+      validDevice({platform: "ios"}),
+    ),
+  );
+  await assertFails(
+    updateDoc(device, {
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  await assertSucceeds(
+    updateDoc(device, {
+      token: "refreshed-fcm-token",
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  await assertSucceeds(deleteDoc(device));
+});
+
+function validFeed(overrides: Record<string, unknown> = {}) {
+  return {
+    type: "idea_created",
+    groupId: "group-1",
+    groupNameSnapshot: "周末去哪",
+    ideaId: "idea-1",
+    ideaTitleSnapshot: "去植物园",
+    invitationId: null,
+    actorId: "alice",
+    actorSnapshot: {nickname: "小林", avatarPath: null},
+    createdAt: new Date("2026-07-24T00:00:00Z"),
+    readAt: null,
+    expiresAt: new Date("2026-10-22T00:00:00Z"),
+    schemaVersion: 1,
+    ...overrides,
+  };
+}
+
+test("feed is private and readAt is the only client transition", async () => {
+  await testEnvironment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(
+      doc(context.firestore(), "users/bob/feed/feed-1"),
+      validFeed(),
+    );
+  });
+  const bob = testEnvironment.authenticatedContext("bob").firestore();
+  const alice = testEnvironment.authenticatedContext("alice").firestore();
+  const feed = doc(bob, "users/bob/feed/feed-1");
+  await assertSucceeds(getDoc(feed));
+  await assertFails(getDoc(doc(alice, "users/bob/feed/feed-1")));
+  await assertSucceeds(updateDoc(feed, {readAt: serverTimestamp()}));
+  await assertFails(updateDoc(feed, {readAt: null}));
+  await assertFails(
+    updateDoc(feed, {
+      actorId: "bob",
+      readAt: serverTimestamp(),
+    }),
+  );
+  await assertFails(deleteDoc(feed));
+  await assertFails(
+    setDoc(doc(bob, "users/bob/feed/forged-feed"), validFeed()),
+  );
+});
+
+test("notification preferences contain only the four booleans and are self-only", async () => {
+  await testEnvironment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(
+      doc(context.firestore(), "users/alice"),
+      validUserProfile(),
+    );
+  });
+  const alice = testEnvironment.authenticatedContext("alice").firestore();
+  const bob = testEnvironment.authenticatedContext("bob").firestore();
+  await assertSucceeds(
+    updateDoc(doc(alice, "users/alice"), {
+      notificationPrefs: {
+        groupInvite: false,
+        newSchedule: true,
+        upcomingReminder: false,
+        ideaComment: true,
+      },
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  await assertFails(
+    updateDoc(doc(alice, "users/alice"), {
+      notificationPrefs: {
+        groupInvite: true,
+        newSchedule: true,
+        upcomingReminder: true,
+        ideaComment: true,
+        marketing: true,
+      },
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  await assertFails(
+    updateDoc(doc(bob, "users/alice"), {
+      notificationPrefs: {
+        groupInvite: false,
+        newSchedule: false,
+        upcomingReminder: false,
+        ideaComment: false,
+      },
+      updatedAt: serverTimestamp(),
+    }),
+  );
+});
+
 function validGroup(overrides: Record<string, unknown> = {}) {
   return {
     name: "周末去哪",
