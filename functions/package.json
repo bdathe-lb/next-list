@@ -9,7 +9,7 @@
     "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
     "lint": "eslint .",
     "build": "tsc",
-    "test:unit": "npm run build && node --test lib/shared/*.test.js lib/groups/*.test.js lib/ideas/*.test.js lib/notifications/*.test.js",
+    "test:unit": "npm run build && node --test lib/account/*.test.js lib/shared/*.test.js lib/groups/*.test.js lib/ideas/*.test.js lib/notifications/*.test.js",
     "test:rules": "npm run build && node --test --test-concurrency=1 lib/test/firestore.rules.test.js lib/test/storage.rules.test.js",
     "check": "npm run lint && npm run test:unit"
   },

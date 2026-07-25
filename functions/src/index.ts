@@ -1,4 +1,5 @@
 import {initializeApp} from "firebase-admin/app";
+import {randomUUID} from "node:crypto";
 import {setGlobalOptions} from "firebase-functions/v2";
 import {onCall} from "firebase-functions/v2/https";
 import {
@@ -6,7 +7,9 @@ import {
   onDocumentWritten,
 } from "firebase-functions/v2/firestore";
 import {onSchedule} from "firebase-functions/v2/scheduler";
+import type {CallableRequest} from "firebase-functions/v2/https";
 import {createHealthPayload} from "./shared/health";
+import {deleteAccountHandler} from "./account/service";
 import {
   acceptDirectInviteHandler,
   acceptInviteHandler,
@@ -36,6 +39,11 @@ import {
   processIdeaActivity,
 } from "./notifications/service";
 import {sendUpcomingReminders} from "./notifications/reminders";
+import {
+  callableRequestId,
+  observeExecution,
+  safeRequestId,
+} from "./shared/observability";
 
 initializeApp();
 
@@ -49,7 +57,11 @@ export const health = onCall(
   {
     enforceAppCheck: false,
   },
-  () => createHealthPayload(),
+  () => observeExecution(
+    "health",
+    undefined,
+    async () => createHealthPayload(),
+  ),
 );
 
 const protectedCallable = {
@@ -57,71 +69,129 @@ const protectedCallable = {
   secrets: [inviteHmacSecret],
 };
 
-export const createGroup = onCall(protectedCallable, createGroupHandler);
-export const updateGroupName = onCall(protectedCallable, updateGroupNameHandler);
+type CallableHandler = (
+  request: CallableRequest<unknown>,
+) => Promise<unknown>;
+
+function observedCallable(functionName: string, handler: CallableHandler) {
+  return (request: CallableRequest<unknown>): Promise<unknown> =>
+    observeExecution(
+      functionName,
+      callableRequestId(request.data) ?? randomUUID(),
+      () => handler(request),
+    );
+}
+
+function observedEvent<T extends {id: string}>(
+  functionName: string,
+  handler: (event: T) => Promise<void>,
+): (event: T) => Promise<void> {
+  return (event) => observeExecution(
+    functionName,
+    safeRequestId(event.id),
+    () => handler(event),
+  );
+}
+
+export const createGroup = onCall(
+  protectedCallable,
+  observedCallable("createGroup", createGroupHandler),
+);
+export const updateGroupName = onCall(
+  protectedCallable,
+  observedCallable("updateGroupName", updateGroupNameHandler),
+);
 export const getOrCreateInvite = onCall(
   protectedCallable,
-  getOrCreateInviteHandler,
+  observedCallable("getOrCreateInvite", getOrCreateInviteHandler),
 );
-export const rotateInvite = onCall(protectedCallable, rotateInviteHandler);
+export const rotateInvite = onCall(
+  protectedCallable,
+  observedCallable("rotateInvite", rotateInviteHandler),
+);
 export const sendDirectInvite = onCall(
   protectedCallable,
-  sendDirectInviteHandler,
+  observedCallable("sendDirectInvite", sendDirectInviteHandler),
 );
-export const previewInvite = onCall(protectedCallable, previewInviteHandler);
-export const acceptInvite = onCall(protectedCallable, acceptInviteHandler);
+export const previewInvite = onCall(
+  protectedCallable,
+  observedCallable("previewInvite", previewInviteHandler),
+);
+export const acceptInvite = onCall(
+  protectedCallable,
+  observedCallable("acceptInvite", acceptInviteHandler),
+);
 export const acceptDirectInvite = onCall(
   protectedCallable,
-  acceptDirectInviteHandler,
+  observedCallable("acceptDirectInvite", acceptDirectInviteHandler),
 );
-export const leaveGroup = onCall(protectedCallable, leaveGroupHandler);
-export const removeMember = onCall(protectedCallable, removeMemberHandler);
-export const transferAdmin = onCall(protectedCallable, transferAdminHandler);
-export const dissolveGroup = onCall(protectedCallable, dissolveGroupHandler);
+export const leaveGroup = onCall(
+  protectedCallable,
+  observedCallable("leaveGroup", leaveGroupHandler),
+);
+export const removeMember = onCall(
+  protectedCallable,
+  observedCallable("removeMember", removeMemberHandler),
+);
+export const transferAdmin = onCall(
+  protectedCallable,
+  observedCallable("transferAdmin", transferAdminHandler),
+);
+export const dissolveGroup = onCall(
+  protectedCallable,
+  observedCallable("dissolveGroup", dissolveGroupHandler),
+);
+export const deleteAccount = onCall(
+  {
+    ...protectedCallable,
+    timeoutSeconds: 300,
+  },
+  observedCallable("deleteAccount", deleteAccountHandler),
+);
 export const syncMembershipProfiles = onDocumentUpdated(
   "users/{uid}",
-  syncMembershipProfileSnapshots,
+  observedEvent("syncMembershipProfiles", syncMembershipProfileSnapshots),
 );
 export const updateGroupIdeaCounts = onDocumentWritten(
   "groups/{groupId}/ideas/{ideaId}",
-  maintainGroupIdeaCounts,
+  observedEvent("updateGroupIdeaCounts", maintainGroupIdeaCounts),
 );
 export const updateIdeaReactionCounts = onDocumentWritten(
   "groups/{groupId}/ideas/{ideaId}/reactions/{uid}",
-  maintainReactionCounts,
+  observedEvent("updateIdeaReactionCounts", maintainReactionCounts),
 );
 export const updateIdeaRsvpCounts = onDocumentWritten(
   "groups/{groupId}/ideas/{ideaId}/rsvps/{uid}",
-  maintainRsvpCounts,
+  observedEvent("updateIdeaRsvpCounts", maintainRsvpCounts),
 );
 export const updateIdeaCommentCount = onDocumentWritten(
   "groups/{groupId}/ideas/{ideaId}/comments/{commentId}",
-  maintainCommentCount,
+  observedEvent("updateIdeaCommentCount", maintainCommentCount),
 );
 export const cleanupMemberResponses = onDocumentUpdated(
   "groups/{groupId}/members/{uid}",
-  cleanupDepartedMemberResponses,
+  observedEvent("cleanupMemberResponses", cleanupDepartedMemberResponses),
 );
 export const createIdeaActivity = onDocumentWritten(
   {
     document: "groups/{groupId}/ideas/{ideaId}",
     retry: true,
   },
-  processIdeaActivity,
+  observedEvent("createIdeaActivity", processIdeaActivity),
 );
 export const createCommentActivity = onDocumentWritten(
   {
     document: "groups/{groupId}/ideas/{ideaId}/comments/{commentId}",
     retry: true,
   },
-  processCommentActivity,
+  observedEvent("createCommentActivity", processCommentActivity),
 );
 export const createDirectInvitationActivity = onDocumentWritten(
   {
     document: "users/{uid}/invitations/{invitationId}",
     retry: true,
   },
-  processDirectInvitation,
+  observedEvent("createDirectInvitationActivity", processDirectInvitation),
 );
 export const upcomingActivityReminders = onSchedule(
   {
@@ -129,5 +199,9 @@ export const upcomingActivityReminders = onSchedule(
     timeZone: "Asia/Shanghai",
     retryCount: 3,
   },
-  () => sendUpcomingReminders(),
+  (event) => observeExecution(
+    "upcomingActivityReminders",
+    safeRequestId(event.scheduleTime),
+    () => sendUpcomingReminders(),
+  ),
 );

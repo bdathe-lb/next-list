@@ -481,6 +481,126 @@ test("M2 callable transactions preserve membership and role invariants", async (
   );
 });
 
+test("M6 account deletion blocks admins then anonymizes and removes private data", async () => {
+  const owner = await createClient(60);
+  const member = await createClient(61);
+  const created = await call<{groupId: string}>(owner, "createGroup", {
+    name: "注销流程小组",
+    requestId: "m6-delete-create-group",
+  });
+  const invite = await call<{token: string}>(
+    owner,
+    "getOrCreateInvite",
+    {groupId: created.groupId},
+  );
+  await call(member, "acceptInvite", {kind: "token", value: invite.token});
+  await expectBusinessError(call(owner, "deleteAccount", {}), "ADMIN_CANNOT_LEAVE");
+
+  const database = getFirestore(adminApp);
+  const groupRef = database.collection("groups").doc(created.groupId);
+  const ideaRef = groupRef.collection("ideas").doc("m6-delete-idea");
+  const commentRef = ideaRef.collection("comments").doc("m6-delete-comment");
+  const memberFeedRef = database.collection("users").doc(member.uid)
+    .collection("feed").doc("m6-delete-feed");
+  const now = Timestamp.now();
+  await Promise.all([
+    ideaRef.set({
+      groupId: created.groupId,
+      title: "保留的小组历史",
+      category: "other",
+      note: null,
+      media: null,
+      locationOrLink: null,
+      createdBy: owner.uid,
+      creatorSnapshot: {nickname: "成员60", avatarPath: null},
+      status: "idea",
+      schedule: null,
+      completion: null,
+      reactionCounts: {want: 0, ok: 0, notInterested: 0},
+      rsvpCounts: {going: 0, maybe: 0, notGoing: 0},
+      commentCount: 1,
+      reminderClaimedAt: null,
+      reminderSentAt: null,
+      reminderSkippedReason: null,
+      lastModifiedBy: owner.uid,
+      createdAt: now,
+      updatedAt: now,
+      isDeleted: false,
+      deletedAt: null,
+      deletedBy: null,
+      schemaVersion: 1,
+    }),
+    database.collection("users").doc(owner.uid).collection("devices")
+      .doc("m6-device").set({token: "private-token"}),
+    database.collection("users").doc(owner.uid).collection("feed")
+      .doc("m6-private-feed").set({type: "idea_created"}),
+    database.collection("users").doc(owner.uid).collection("invitations")
+      .doc("m6-private-invite").set({status: "pending"}),
+    memberFeedRef.set({
+      actorId: owner.uid,
+      actorSnapshot: {nickname: "成员60", avatarPath: null},
+    }),
+  ]);
+  await commentRef.set({
+    content: "这条小组评论需要保留",
+    createdBy: owner.uid,
+    creatorSnapshot: {nickname: "成员60", avatarPath: null},
+    createdAt: now,
+    isDeleted: false,
+    deletedAt: null,
+    deletedBy: null,
+    schemaVersion: 1,
+  });
+
+  await call(owner, "transferAdmin", {
+    groupId: created.groupId,
+    userId: member.uid,
+  });
+  assert.deepEqual(
+    await call<{deleted: boolean}>(owner, "deleteAccount", {}),
+    {deleted: true},
+  );
+
+  await assert.rejects(
+    getAdminAuth(adminApp).getUser(owner.uid),
+    (error: unknown) => (
+      (error as {code?: string}).code === "auth/user-not-found"
+    ),
+  );
+  const deletedProfile = await database.collection("users").doc(owner.uid).get();
+  assert.equal(deletedProfile.get("status"), "deleted");
+  assert.equal(deletedProfile.get("nickname"), "已注销成员");
+  assert.equal(deletedProfile.get("avatarPath"), null);
+  assert.equal(
+    (await database.collection("users").doc(owner.uid).collection("devices").get()).size,
+    0,
+  );
+  assert.equal(
+    (await database.collection("users").doc(owner.uid).collection("feed").get()).size,
+    0,
+  );
+  assert.equal(
+    (
+      await database.collection("users").doc(owner.uid)
+        .collection("invitations").get()
+    ).size,
+    0,
+  );
+  const ownerMembership = await groupRef.collection("members").doc(owner.uid).get();
+  assert.equal(ownerMembership.get("status"), "left");
+  assert.equal(ownerMembership.get("profileSnapshot.nickname"), "已注销成员");
+  assert.equal((await groupRef.get()).get("adminId"), member.uid);
+  assert.equal((await groupRef.get()).get("memberCount"), 1);
+  assert.equal((await ideaRef.get()).get("title"), "保留的小组历史");
+  assert.equal((await ideaRef.get()).get("creatorSnapshot.nickname"), "已注销成员");
+  assert.equal((await commentRef.get()).get("content"), "这条小组评论需要保留");
+  assert.equal(
+    (await commentRef.get()).get("creatorSnapshot.nickname"),
+    "已注销成员",
+  );
+  assert.equal((await memberFeedRef.get()).get("actorSnapshot.nickname"), "已注销成员");
+});
+
 test("M3 triggers keep idea reaction and comment aggregates exact", async () => {
   const owner = await createClient(20);
   const member = await createClient(21);
