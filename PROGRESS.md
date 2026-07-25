@@ -1,16 +1,39 @@
 # NextList 开发进度
 
-最后更新：2026-07-24
+最后更新：2026-07-25
 
 ## 当前阶段
 
-**M5：动态与通知（已关闭）**
+**M6：发布加固（进行中）**
 
-M0～M5 已关闭。M5 实现提交 `6a8040c` 已推送至
-[Draft PR #2](https://github.com/bdathe-lb/next-list/pull/2)；本地全量验收和远端
-[CI #30102400540](https://github.com/bdathe-lb/next-list/actions/runs/30102400540)
-的 Android、Functions and Firebase Rules 两个 Job 均通过。真实 Firebase 环境
-尚未部署。
+M0～M5 已关闭。M6 在 `codex/m6-release-hardening` 分支上进行，聚焦上架前的
+可观测性、账号注销、无障碍与发布构建加固。本地 Android（`assembleDebug`、
+`testDebugUnitTest`、`lintDebug`、`assembleRelease`）与 Functions（单元
+19/19、集成 6/6）验收通过。真实 Firebase 环境与隐私政策正式文案尚未部署。
+
+## M6 已完成
+
+### 可观测性与账号注销
+
+- [x] Functions 新增结构化可观测性模块：`wrapCallable` 统一记录
+  `function_completed / function_rejected`，带严重级别、耗时和 requestId；
+  `createHealthPayload` 输出稳定的模拟器健康契约。单元测试 19/19 通过。
+- [x] 新增 `deleteAccount` Callable：匿名化用户资料与设备、清理有效
+  membership（唯一管理员的小组会阻断并返回 `ADMIN_CANNOT_LEAVE`）、删除
+  Firebase Auth 账号；使用 requestId 保证幂等。集成测试覆盖管理员阻断、
+  幂等重放与完整删除三种场景，6/6 通过。
+- [x] Android 侧 `AuthRepository.deleteAccount` 调用 Callable 后登出；
+  `DeleteAccountViewModel` 提供二次确认弹层，区分"唯一管理员阻断"与
+  一般错误，注销前尽力清理设备 token。"我的"页新增危险操作入口。
+
+### 无障碍、隐私与发布构建
+
+- [x] 集成 Crashlytics 依赖与插件（随 `google-services.json` 条件启用）；
+  仅在已配置且非模拟器构建中开启采集，调试与模拟器运行保持静默。
+- [x] 开启 release R8 混淆，补充 Firebase、Hilt、协程、Coil 与 Firestore
+  反序列化数据类的 keep 规则；`assembleRelease` 通过并上传映射文件。
+- [x] "我的"页新增"隐私政策"（打开外部链接）与"开源许可"入口；新增
+  `OssLicensesScreen`，每条声明带 TalkBack 语义说明。
 
 ## M5 已完成
 
