@@ -4,12 +4,60 @@
 
 ## 当前阶段
 
-**M6：发布加固（已关闭）**
+**项目已搁置（2026-07-25）。功能开发 M0～M6 全部关闭，阻塞原因在基础设施，
+不是功能缺口。** 详见下方“搁置说明”。
 
-M0～M6 已关闭。M6 实现提交已推送至
+M6 实现提交已推送至
 [PR #3](https://github.com/bdathe-lb/next-list/pull/3)；本地全量验收和远端
-CI（Android + Functions and Firebase Rules 两个 Job）均已通过。真实 Firebase
-环境部署与隐私政策正式文案仍作为外部配置事项跟踪。
+CI（Android + Functions and Firebase Rules 两个 Job）均已通过。代码本身处于
+可继续开发的干净状态。
+
+## 搁置说明
+
+### 阻塞原因
+
+项目无法继续走 Firebase 路线，两个原因叠加，且都在代码之外：
+
+1. **网络**：Firebase 在中国大陆被阻断，目标用户（作者及朋友）无法直连
+   Firestore / Auth / Storage。
+2. **计费**：无法开通 Blaze 付费计划（Google Cloud 要求 US$30 预付款和国际
+   支付方式）。而本项目架构 **100% 依赖 Cloud Functions** —— Rules 不允许
+   客户端直写 `groups`、`members`、`groupInvites`，13 个 callable 是唯一
+   入口；Spark 免费版不提供 Cloud Functions，新项目的 Cloud Storage 同样
+   需要 Blaze。
+
+第 2 条是决定性的：即使用海外反向代理绕过网络问题，Functions 也部署不了，
+架构无法运行。
+
+### 已论证但未实施的迁移方案
+
+在「小范围自用 + 几乎零成本 + 国内可用 + 无国际信用卡 + 无自有机器」的约束下，
+方案收敛到：
+
+- **主机**：国内云厂商香港节点轻量服务器（支付宝付款、免备案），约 ¥60～100/年
+- **后端**：PocketBase 单二进制（Auth + SQLite + 实时 SSE + 文件存储 + 规则引擎）
+- **实时**：SSE 订阅替代 16 个 `addSnapshotListener`
+- **权限**：Collection API Rules 翻译现有 1030 行 Firestore Rules，复杂条款进
+  Go hooks
+- **服务端逻辑**：Go hooks 承接 9 个触发器与 13 个 callable
+- **推送**：放弃系统级推送（国内厂商通道对个人自用不可行），改为
+  AlarmManager 做活动临近提醒、WorkManager 做本地通知；应用内 Feed 不受影响
+- **离线**：Room + outbox 自研，保留现有 `hasPendingWrites` 契约
+
+排除项：Supabase 自托管需 2～4GB 内存，廉价轻量机器带不动；Supabase 官方云在
+国内实测 TLS 握手约 5.2 秒（同机阿里云对照组 0.076 秒），无法支撑实时订阅。
+Realm / MongoDB Atlas Device Sync 已停止服务，不作考虑。
+
+### 迁移边界（若将来恢复）
+
+- Android 端 77 个源文件中 **63 个（`feature/` `domain/` `core/`）对 Firebase
+  零引用**，UI、状态机、校验、导航、无障碍均可原样保留。
+- 需要重写的只有 `data/` 下 **14 个文件**；`domain/repository/` 的 11 个接口
+  就是现成的替换边界。
+- **最大风险是离线契约**：`hasPendingWrites` / `isFromCache` / `RealtimeItems`
+  在 9 个 feature 文件中出现 44 次，是 `LoadState` 契约的一部分。任何替代方案
+  都没有 Firestore 的离线持久化，必须用 Room + outbox 复刻。恢复项目时应先
+  验证这一点，再投入其余工作。
 
 ## M6 已完成
 
@@ -337,6 +385,9 @@ M5 随后正式关闭。
 
 ## 当前限制与外部配置
 
+以下条目记录的是 M6 关闭时的状态。其中所有涉及“真实 Firebase 项目”的事项现已
+确认无法完成，原因见上方“搁置说明”，不再作为待办跟踪。
+
 - 本地使用仓库提供的示例配置和 `demo-nextlist` Emulator 完成开发与验收。
 - 尚未创建或接入真实 Firebase 开发/生产项目；真实 `google-services.json`、
   `NEXTLIST_INVITE_SECRET`、Play Integrity 注册和生产 Rules/App Check smoke test
@@ -353,5 +404,14 @@ M5 随后正式关闭。
 
 ## 下一步
 
-1. 如具备真实 Firebase 项目，部署 M3～M5 Rules、索引和 Functions，配置 Play
-   Integrity，并执行生产预发布 App Check / Rules / Storage 双设备 smoke test。
+项目已搁置，无进行中的工作项。以下为将来恢复时的两条路径，二选一：
+
+1. **换后端**（当前唯一可行路径）：按“搁置说明”中的 PocketBase 方案迁移。
+   第一步是验证离线契约 —— 拿 `IdeaRepository` 单个接口跑通「PocketBase SSE
+   + Room outbox」，确认能撑住 `RealtimeItems` / `hasPendingWrites` 语义，
+   再投入其余工作。
+2. **继续 Firebase**（需外部条件改变）：具备可用的国际支付方式并成功开通
+   Blaze，且解决大陆网络可达性之后，才谈得上部署 M3～M5 Rules、索引和
+   Functions，配置 Play Integrity，并执行生产预发布 App Check / Rules /
+   Storage 双设备 smoke test。注意 Google Cloud 对中国大陆的服务条款限制
+   带来的账号风险。
