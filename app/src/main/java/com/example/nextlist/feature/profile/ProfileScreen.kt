@@ -181,6 +181,8 @@ fun ProfileRoute(
     session: AccountSession.SignedIn,
     onEditProfile: () -> Unit,
     onNotificationSettings: () -> Unit,
+    onPrivacyPolicy: () -> Unit,
+    onOssLicenses: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ProfileViewModel = hiltViewModel(),
     deleteViewModel: DeleteAccountViewModel = hiltViewModel(),
@@ -196,6 +198,8 @@ fun ProfileRoute(
         deleteState = deleteState,
         onEditProfile = onEditProfile,
         onNotificationSettings = onNotificationSettings,
+        onPrivacyPolicy = onPrivacyPolicy,
+        onOssLicenses = onOssLicenses,
         onSendVerification = viewModel::sendVerificationEmail,
         onRefreshVerification = { viewModel.refreshVerificationStatus(session) },
         onSignOut = viewModel::signOut,
@@ -213,6 +217,8 @@ fun ProfileScreen(
     deleteState: DeleteAccountUiState,
     onEditProfile: () -> Unit,
     onNotificationSettings: () -> Unit,
+    onPrivacyPolicy: () -> Unit,
+    onOssLicenses: () -> Unit,
     onSendVerification: () -> Unit,
     onRefreshVerification: () -> Unit,
     onSignOut: () -> Unit,
@@ -303,6 +309,18 @@ fun ProfileScreen(
                     title = "通知设置",
                     supporting = "管理四类推送",
                     onClick = onNotificationSettings,
+                )
+                HorizontalDivider()
+                SettingsRow(
+                    title = "隐私政策",
+                    supporting = "查看数据使用说明",
+                    onClick = onPrivacyPolicy,
+                )
+                HorizontalDivider()
+                SettingsRow(
+                    title = "开源许可",
+                    supporting = "第三方库声明",
+                    onClick = onOssLicenses,
                 )
                 HorizontalDivider()
                 SettingsRow(title = "关于应用", supporting = "下次 · NextList 0.1.0")

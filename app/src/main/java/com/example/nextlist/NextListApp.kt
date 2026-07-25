@@ -5,6 +5,7 @@ import com.example.nextlist.data.firebase.FirebaseEmulatorConnector
 import com.example.nextlist.data.messaging.MessagingRegistrationCoordinator
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
@@ -24,6 +25,7 @@ class NextListApp : Application() {
             FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
                 PlayIntegrityAppCheckProviderFactory.getInstance(),
             )
+            FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(true)
         }
     }
 }

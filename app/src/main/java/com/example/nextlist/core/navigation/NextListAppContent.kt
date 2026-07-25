@@ -1,5 +1,7 @@
 package com.example.nextlist.core.navigation
 
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -56,6 +59,7 @@ import com.example.nextlist.feature.ideas.RandomDecisionRoute
 import com.example.nextlist.feature.profile.CompleteProfileRoute
 import com.example.nextlist.feature.profile.EditProfileRoute
 import com.example.nextlist.feature.profile.NotificationSettingsRoute
+import com.example.nextlist.feature.profile.OssLicensesRoute
 import com.example.nextlist.feature.profile.ProfileRoute
 import com.example.nextlist.domain.model.AppTarget
 import com.example.nextlist.domain.model.toAppTarget
@@ -63,6 +67,8 @@ import kotlinx.coroutines.launch
 
 private const val EDIT_PROFILE_ROUTE = "profile/edit"
 private const val NOTIFICATION_SETTINGS_ROUTE = "profile/notifications"
+private const val OSS_LICENSES_ROUTE = "profile/licenses"
+private const val PRIVACY_POLICY_URL = "https://nextlist.example.com/privacy"
 private const val CREATE_GROUP_ROUTE = "group/create"
 private const val JOIN_CODE_ROUTE = "group/join-code"
 private const val JOIN_GROUP_ROUTE = "group/join?kind={kind}&value={value}"
@@ -221,12 +227,15 @@ private fun SignedInApp(
                 ActivityFeedRoute(onOpenTarget = ::openTarget)
             }
             composable(TopLevelDestination.PROFILE.route) {
+                val context = LocalContext.current
                 ProfileRoute(
                     session = session,
                     onEditProfile = { navController.navigate(EDIT_PROFILE_ROUTE) },
                     onNotificationSettings = {
                         navController.navigate(NOTIFICATION_SETTINGS_ROUTE)
                     },
+                    onPrivacyPolicy = { openUrl(context, PRIVACY_POLICY_URL) },
+                    onOssLicenses = { navController.navigate(OSS_LICENSES_ROUTE) },
                 )
             }
             composable(EDIT_PROFILE_ROUTE) {
@@ -234,6 +243,9 @@ private fun SignedInApp(
             }
             composable(NOTIFICATION_SETTINGS_ROUTE) {
                 NotificationSettingsRoute(onBack = { navController.popBackStack() })
+            }
+            composable(OSS_LICENSES_ROUTE) {
+                OssLicensesRoute(onBack = { navController.popBackStack() })
             }
             composable(CREATE_GROUP_ROUTE) {
                 CreateGroupRoute(
@@ -484,5 +496,11 @@ private fun SessionError(
                 Text("重试")
             }
         }
+    }
+}
+
+private fun openUrl(context: Context, url: String) {
+    runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
     }
 }
