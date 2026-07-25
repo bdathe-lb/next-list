@@ -4,12 +4,12 @@
 
 ## 当前阶段
 
-**M6：发布加固（进行中）**
+**M6：发布加固（已关闭）**
 
-M0～M5 已关闭。M6 在 `codex/m6-release-hardening` 分支上进行，聚焦上架前的
-可观测性、账号注销、无障碍与发布构建加固。本地 Android（`assembleDebug`、
-`testDebugUnitTest`、`lintDebug`、`assembleRelease`）与 Functions（单元
-19/19、集成 6/6）验收通过。真实 Firebase 环境与隐私政策正式文案尚未部署。
+M0～M6 已关闭。M6 实现提交已推送至
+[PR #3](https://github.com/bdathe-lb/next-list/pull/3)；本地全量验收和远端
+CI（Android + Functions and Firebase Rules 两个 Job）均已通过。真实 Firebase
+环境部署与隐私政策正式文案仍作为外部配置事项跟踪。
 
 ## M6 已完成
 
