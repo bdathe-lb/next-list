@@ -44,6 +44,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -611,7 +613,12 @@ private fun ReactionSection(
         )
         ReactionValue.entries.forEach { value ->
             val count = reactions.count { it.value == value }
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clearAndSetSemantics {
+                    contentDescription = "${value.label}：$count 人，点击查看成员明细"
+                },
+            ) {
                 FilterChip(
                     selected = current == value,
                     onClick = { onSetReaction(value) },
