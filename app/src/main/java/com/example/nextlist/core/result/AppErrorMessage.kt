@@ -7,6 +7,7 @@ enum class AppOperation {
     EMAIL_VERIFICATION,
     PROFILE_SAVE,
     AVATAR_UPLOAD,
+    ACCOUNT_DELETION,
     GENERAL,
 }
 
@@ -34,7 +35,11 @@ fun AppError.toUserMessage(operation: AppOperation = AppOperation.GENERAL): Stri
     AppError.INVITE_EXPIRED -> "邀请已失效或过期"
     AppError.EMAIL_NOT_VERIFIED -> "请先验证邮箱，再创建或加入小组"
     AppError.NOT_ADMIN -> "只有小组管理员可以完成此操作"
-    AppError.ADMIN_CANNOT_LEAVE -> "管理员需要先转让管理员身份，或解散小组"
+    AppError.ADMIN_CANNOT_LEAVE -> if (operation == AppOperation.ACCOUNT_DELETION) {
+        "你是某个小组的唯一管理员，请先转让管理员身份或解散小组，再注销账号"
+    } else {
+        "管理员需要先转让管理员身份，或解散小组"
+    }
     AppError.TARGET_NOT_MEMBER -> "该成员已不在小组中"
     AppError.CONFLICT -> "内容已被其他成员更新，请确认最新内容后重试"
     AppError.VALIDATION -> when (operation) {

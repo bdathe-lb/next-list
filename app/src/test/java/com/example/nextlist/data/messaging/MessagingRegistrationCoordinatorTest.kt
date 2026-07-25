@@ -47,6 +47,7 @@ private class RegistrationAuthRepository : AuthRepository {
     override suspend fun sendEmailVerification() = AppResult.Success(Unit)
     override suspend fun refreshCurrentUser() = AppResult.Failure(AppError.UNAUTHENTICATED)
     override suspend fun signOut() = AppResult.Success(Unit)
+    override suspend fun deleteAccount(requestId: String) = AppResult.Success(Unit)
 }
 
 private class RegistrationDeviceRepository : DeviceRepository {

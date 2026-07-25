@@ -10,6 +10,7 @@ import com.example.nextlist.domain.repository.AuthRepository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.UserProfileChangeRequest
+import com.google.firebase.functions.FirebaseFunctions
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -96,6 +97,26 @@ class FirebaseAuthRepository @Inject constructor() : AuthRepository {
             val domainUser = refreshed.toDomain()
             currentUser.value = domainUser
             AppResult.Success(domainUser)
+        } catch (error: Exception) {
+            AppResult.Failure(error.toAppError())
+        }
+    }
+
+    override suspend fun deleteAccount(requestId: String): AppResult<Unit> {
+        val firebaseAuth = auth ?: return AppResult.Failure(AppError.UNKNOWN)
+        val functions = if (BuildConfig.FIREBASE_CONFIGURED) {
+            com.google.firebase.functions.FirebaseFunctions
+                .getInstance(BuildConfig.FIREBASE_FUNCTIONS_REGION)
+        } else {
+            return AppResult.Failure(AppError.UNKNOWN)
+        }
+        return try {
+            functions.getHttpsCallable("deleteAccount")
+                .call(mapOf("requestId" to requestId))
+                .awaitTask()
+            firebaseAuth.signOut()
+            currentUser.value = null
+            AppResult.Success(Unit)
         } catch (error: Exception) {
             AppResult.Failure(error.toAppError())
         }

@@ -18,4 +18,6 @@ interface AuthRepository {
     suspend fun refreshCurrentUser(): AppResult<AuthUser>
 
     suspend fun signOut(): AppResult<Unit>
+
+    suspend fun deleteAccount(requestId: String): AppResult<Unit>
 }

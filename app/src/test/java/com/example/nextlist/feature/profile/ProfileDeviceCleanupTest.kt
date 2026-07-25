@@ -69,6 +69,7 @@ private class CleanupAuthRepository : AuthRepository {
         signOutCalls += 1
         return AppResult.Success(Unit)
     }
+    override suspend fun deleteAccount(requestId: String) = AppResult.Success(Unit)
 }
 
 private class FailingDeviceRepository : DeviceRepository {
