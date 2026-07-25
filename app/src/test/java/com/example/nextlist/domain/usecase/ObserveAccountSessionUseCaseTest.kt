@@ -95,6 +95,7 @@ private class FakeAuthRepository(initialUser: AuthUser?) : AuthRepository {
         user.value?.let { AppResult.Success(it) }
             ?: AppResult.Failure(AppError.UNAUTHENTICATED)
     override suspend fun signOut() = AppResult.Success(Unit)
+    override suspend fun deleteAccount(requestId: String) = AppResult.Success(Unit)
 }
 
 private class FakeUserProfileRepository(

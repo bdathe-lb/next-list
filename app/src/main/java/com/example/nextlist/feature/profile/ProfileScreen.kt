@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -38,6 +39,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -177,21 +181,31 @@ fun ProfileRoute(
     session: AccountSession.SignedIn,
     onEditProfile: () -> Unit,
     onNotificationSettings: () -> Unit,
+    onPrivacyPolicy: () -> Unit,
+    onOssLicenses: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ProfileViewModel = hiltViewModel(),
+    deleteViewModel: DeleteAccountViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val deleteState by deleteViewModel.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(session.profile.avatarPath) {
         viewModel.loadAvatar(session.profile.avatarPath)
     }
     ProfileScreen(
         session = session,
         state = state,
+        deleteState = deleteState,
         onEditProfile = onEditProfile,
         onNotificationSettings = onNotificationSettings,
+        onPrivacyPolicy = onPrivacyPolicy,
+        onOssLicenses = onOssLicenses,
         onSendVerification = viewModel::sendVerificationEmail,
         onRefreshVerification = { viewModel.refreshVerificationStatus(session) },
         onSignOut = viewModel::signOut,
+        onRequestDeleteAccount = deleteViewModel::requestDelete,
+        onDismissDeleteDialog = deleteViewModel::dismissDialog,
+        onConfirmDeleteAccount = deleteViewModel::confirmDelete,
         modifier = modifier,
     )
 }
@@ -200,13 +214,36 @@ fun ProfileRoute(
 fun ProfileScreen(
     session: AccountSession.SignedIn,
     state: ProfileUiState,
+    deleteState: DeleteAccountUiState,
     onEditProfile: () -> Unit,
     onNotificationSettings: () -> Unit,
+    onPrivacyPolicy: () -> Unit,
+    onOssLicenses: () -> Unit,
     onSendVerification: () -> Unit,
     onRefreshVerification: () -> Unit,
     onSignOut: () -> Unit,
+    onRequestDeleteAccount: () -> Unit,
+    onDismissDeleteDialog: () -> Unit,
+    onConfirmDeleteAccount: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    if (deleteState.showConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = onDismissDeleteDialog,
+            title = { Text("注销账号") },
+            text = {
+                Text("注销后账号数据将被清除，此操作不可撤销。如果你是某个小组的唯一管理员，请先转让或解散小组。")
+            },
+            confirmButton = {
+                TextButton(onClick = onConfirmDeleteAccount) {
+                    Text("确认注销", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismissDeleteDialog) { Text("取消") }
+            },
+        )
+    }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -274,13 +311,25 @@ fun ProfileScreen(
                     onClick = onNotificationSettings,
                 )
                 HorizontalDivider()
+                SettingsRow(
+                    title = "隐私政策",
+                    supporting = "查看数据使用说明",
+                    onClick = onPrivacyPolicy,
+                )
+                HorizontalDivider()
+                SettingsRow(
+                    title = "开源许可",
+                    supporting = "第三方库声明",
+                    onClick = onOssLicenses,
+                )
+                HorizontalDivider()
                 SettingsRow(title = "关于应用", supporting = "下次 · NextList 0.1.0")
             }
         }
 
         OutlinedButton(
             onClick = onSignOut,
-            enabled = !state.isSigningOut,
+            enabled = !state.isSigningOut && !deleteState.isDeleting,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(50.dp),
@@ -295,6 +344,40 @@ fun ProfileScreen(
                 Text("正在退出…")
             } else {
                 Text("退出登录")
+            }
+        }
+
+        deleteState.adminBlockedMessage?.let { msg ->
+            Text(
+                text = msg,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+        deleteState.errorMessage?.let { msg ->
+            Text(
+                text = msg,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+
+        TextButton(
+            onClick = onRequestDeleteAccount,
+            enabled = !deleteState.isDeleting && !state.isSigningOut,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            if (deleteState.isDeleting) {
+                CircularProgressIndicator(
+                    modifier = Modifier
+                        .padding(end = 8.dp)
+                        .size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Text("正在注销…", color = MaterialTheme.colorScheme.error)
+            } else {
+                Text("注销账号", color = MaterialTheme.colorScheme.error)
             }
         }
     }

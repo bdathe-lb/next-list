@@ -32,6 +32,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -203,10 +206,15 @@ internal fun MemberAvatarRow(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .semantics { contentDescription = "还有 ${memberCount - 5} 位成员" },
                 contentAlignment = Alignment.Center,
             ) {
-                Text("+${memberCount - 5}", style = MaterialTheme.typography.labelMedium)
+                Text(
+                    "+${memberCount - 5}",
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.clearAndSetSemantics {},
+                )
             }
         }
     }
@@ -223,19 +231,23 @@ internal fun InitialAvatar(
         modifier = modifier
             .size(size.dp)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primaryContainer),
+            .background(MaterialTheme.colorScheme.primaryContainer)
+            .semantics { contentDescription = "$nickname 的头像" },
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = nickname.trim().firstOrNull()?.toString()?.uppercase() ?: "下",
             color = MaterialTheme.colorScheme.onPrimaryContainer,
             fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.clearAndSetSemantics {},
         )
         if (avatarUrl != null) {
             AsyncImage(
                 model = avatarUrl,
-                contentDescription = "$nickname 的头像",
-                modifier = Modifier.fillMaxSize(),
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clearAndSetSemantics {},
                 contentScale = ContentScale.Crop,
             )
         }

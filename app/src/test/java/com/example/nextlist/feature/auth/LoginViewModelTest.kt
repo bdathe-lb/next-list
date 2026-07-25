@@ -80,4 +80,5 @@ private class DelayedAuthRepository : AuthRepository {
     override suspend fun refreshCurrentUser() =
         AppResult.Failure(AppError.UNAUTHENTICATED)
     override suspend fun signOut() = AppResult.Success(Unit)
+    override suspend fun deleteAccount(requestId: String) = AppResult.Success(Unit)
 }

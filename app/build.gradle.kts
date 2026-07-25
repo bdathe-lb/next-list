@@ -10,6 +10,7 @@ val firebaseConfigured = googleServicesFile.exists()
 
 if (firebaseConfigured) {
     apply(plugin = "com.google.gms.google-services")
+    apply(plugin = "com.google.firebase.crashlytics")
 }
 
 android {
@@ -46,7 +47,7 @@ android {
             manifestPlaceholders["usesCleartextTraffic"] = "true"
         }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             buildConfigField("boolean", "USE_FIREBASE_EMULATORS", "false")
             buildConfigField("String", "FIREBASE_EMULATOR_HOST", "\"\"")
             proguardFiles(
@@ -104,6 +105,7 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.appcheck.playintegrity)
     implementation(libs.firebase.auth)
+    implementation(libs.firebase.crashlytics)
     implementation(libs.firebase.firestore)
     implementation(libs.firebase.functions)
     implementation(libs.firebase.messaging)
